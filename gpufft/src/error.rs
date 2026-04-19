@@ -18,5 +18,6 @@ pub use crate::cuda::CudaError;
 #[cfg(feature = "vulkan")]
 pub type Error = VulkanError;
 
+/// Shorthand for the default backend's error type (CUDA-only build).
 #[cfg(all(feature = "cuda", not(feature = "vulkan")))]
 pub type Error = CudaError;
