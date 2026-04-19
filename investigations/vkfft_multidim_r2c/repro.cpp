@@ -491,6 +491,151 @@ static std::vector<float> mode_c_r2c(Ctx& c, uint32_t Nx, uint32_t Ny, uint32_t 
 }
 
 // ===============================================================
+//  Mode D: R2C + C2R round-trip via the plan-cache pattern.
+//
+//  Separate R2C and C2R plans, each configured with scratch buffers at
+//  init and user buffers overridden via VkFFTLaunchParams at execute.
+//  This mirrors what a Rust backend does when `plan_r2c` and `plan_c2r`
+//  are distinct objects with no shared VkFFT app.
+//
+//  Returns the real output after `c2r(r2c(input))`. Expected: host * N,
+//  where N = Nx * Ny * Nz (cuFFT / VkFFT unnormalised convention).
+// ===============================================================
+
+static std::vector<float> mode_d_roundtrip(Ctx& c, uint32_t Nx, uint32_t Ny, uint32_t Nz,
+                                           const std::vector<float>& tight_real) {
+    const uint32_t half = Nx / 2 + 1;
+    const uint64_t real_bytes    = (uint64_t)Nx * Ny * Nz * sizeof(float);
+    const uint64_t complex_bytes = (uint64_t)half * Ny * Nz * 2 * sizeof(float);
+
+    // User buffers.
+    Buf user_real    = alloc_buffer(c, real_bytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    Buf user_complex = alloc_buffer(c, complex_bytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    Buf user_real_back = alloc_buffer(c, real_bytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    // R2C scratches.
+    Buf r2c_si = alloc_buffer(c, real_bytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    Buf r2c_so = alloc_buffer(c, complex_bytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    // C2R scratches + intermediate.
+    Buf c2r_si   = alloc_buffer(c, complex_bytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    Buf c2r_mid  = alloc_buffer(c, complex_bytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    Buf c2r_so   = alloc_buffer(c, real_bytes,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    upload(c, user_real.buf, tight_real.data(), real_bytes);
+
+    uint64_t in_size_r  = real_bytes;
+    uint64_t out_size_r = complex_bytes;
+    uint64_t in_size_c  = complex_bytes;
+    uint64_t mid_size_c = complex_bytes;
+    uint64_t out_size_c = real_bytes;
+
+    // --- R2C plan ---
+    VkFFTConfiguration cfg_r{};
+    cfg_r.FFTdim = 3;
+    cfg_r.size[0] = Nx; cfg_r.size[1] = Ny; cfg_r.size[2] = Nz;
+    cfg_r.performR2C = 1;
+    cfg_r.isInputFormatted = 1;
+    cfg_r.inputBufferStride[0] = Nx;
+    cfg_r.inputBufferStride[1] = (uint64_t)Nx * Ny;
+    cfg_r.inputBufferStride[2] = (uint64_t)Nx * Ny * Nz;
+    cfg_r.physicalDevice = &c.phys;
+    cfg_r.device         = &c.device;
+    cfg_r.queue          = &c.queue;
+    cfg_r.commandPool    = &c.pool;
+    cfg_r.fence          = &c.fence;
+    cfg_r.inputBuffer      = &r2c_si.buf;
+    cfg_r.inputBufferSize  = &in_size_r;
+    cfg_r.inputBufferNum   = 1;
+    cfg_r.buffer           = &r2c_so.buf;
+    cfg_r.bufferSize       = &out_size_r;
+    cfg_r.bufferNum        = 1;
+
+    VkFFTApplication app_r{};
+    VKFFT_CHECK(initializeVkFFT(&app_r, cfg_r));
+
+    // --- C2R plan ---
+    VkFFTConfiguration cfg_c{};
+    cfg_c.FFTdim = 3;
+    cfg_c.size[0] = Nx; cfg_c.size[1] = Ny; cfg_c.size[2] = Nz;
+    cfg_c.performR2C = 1;
+    cfg_c.isInputFormatted = 1;
+    cfg_c.isOutputFormatted = 1;
+    cfg_c.outputBufferStride[0] = Nx;
+    cfg_c.outputBufferStride[1] = (uint64_t)Nx * Ny;
+    cfg_c.outputBufferStride[2] = (uint64_t)Nx * Ny * Nz;
+    cfg_c.physicalDevice = &c.phys;
+    cfg_c.device         = &c.device;
+    cfg_c.queue          = &c.queue;
+    cfg_c.commandPool    = &c.pool;
+    cfg_c.fence          = &c.fence;
+    cfg_c.inputBuffer      = &c2r_si.buf;
+    cfg_c.inputBufferSize  = &in_size_c;
+    cfg_c.inputBufferNum   = 1;
+    cfg_c.buffer           = &c2r_mid.buf;
+    cfg_c.bufferSize       = &mid_size_c;
+    cfg_c.bufferNum        = 1;
+    cfg_c.outputBuffer     = &c2r_so.buf;
+    cfg_c.outputBufferSize = &out_size_c;
+    cfg_c.outputBufferNum  = 1;
+
+    VkFFTApplication app_c{};
+    VKFFT_CHECK(initializeVkFFT(&app_c, cfg_c));
+
+    // R2C: user_real -> user_complex.
+    run_vkfft(c, &app_r, /*inverse=*/0, [&](VkFFTLaunchParams& lp) {
+        lp.inputBuffer = &user_real.buf;
+        lp.buffer      = &user_complex.buf;
+    });
+
+    // C2R: user_complex -> user_real_back (through c2r_mid).
+    run_vkfft(c, &app_c, /*inverse=*/1, [&](VkFFTLaunchParams& lp) {
+        lp.inputBuffer  = &user_complex.buf;
+        lp.buffer       = &c2r_mid.buf;
+        lp.outputBuffer = &user_real_back.buf;
+    });
+
+    std::vector<float> host_back((size_t)Nx * Ny * Nz, 0.0f);
+    download(c, user_real_back.buf, host_back.data(), real_bytes);
+
+    deleteVkFFT(&app_c);
+    deleteVkFFT(&app_r);
+    free_buffer(c, c2r_so);
+    free_buffer(c, c2r_mid);
+    free_buffer(c, c2r_si);
+    free_buffer(c, r2c_so);
+    free_buffer(c, r2c_si);
+    free_buffer(c, user_real_back);
+    free_buffer(c, user_complex);
+    free_buffer(c, user_real);
+    return host_back;
+}
+
+// ===============================================================
 //  Compare.
 // ===============================================================
 
@@ -542,9 +687,21 @@ static void run_case(Ctx& c, uint32_t Nx, uint32_t Ny, uint32_t Nz) {
     std::printf("  formatted, user at init (B):    diff vs A  L-inf = %.6f, L2_rel = %.6e  %s\n",
                 sab.linf, sab.l2_rel,
                 sab.linf < 1e-3f ? "[OK]" : "[DIFFER]");
-    std::printf("  formatted, launch-override (C): diff vs A  L-inf = %.6f, L2_rel = %.6e  %s\n\n",
+    std::printf("  formatted, launch-override (C): diff vs A  L-inf = %.6f, L2_rel = %.6e  %s\n",
                 sac.linf, sac.l2_rel,
                 sac.linf < 1e-3f ? "[OK]" : "[DIFFER]");
+
+    // Round-trip via the plan-cache pattern (two separate plans with
+    // launch-param overrides). Expected: c2r(r2c(input)) == input * N.
+    auto roundtrip = mode_d_roundtrip(c, Nx, Ny, Nz, input);
+    const double N = (double)Nx * Ny * Nz;
+    double linf_rt = 0.0;
+    for (size_t i = 0; i < input.size(); ++i) {
+        const double diff = (double)roundtrip[i] / N - (double)input[i];
+        linf_rt = std::fmax(linf_rt, std::fabs(diff));
+    }
+    std::printf("  round-trip R2C+C2R (D):         L-inf(back/N - input) = %.6e  %s\n\n",
+                linf_rt, linf_rt < 1e-3 ? "[OK]" : "[DIFFER]");
 }
 
 int main() {
