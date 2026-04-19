@@ -1,0 +1,42 @@
+[package]
+name = "gpufft"
+description = "Unified GPU-accelerated FFT for Rust: Vulkan via VkFFT, CUDA via cuFFT."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["fft", "gpu", "vulkan", "cuda", "cufft"]
+categories = ["science", "hardware-support", "mathematics"]
+
+[features]
+default = ["vulkan"]
+vulkan = ["dep:gpufft-vulkan-sys", "dep:ash"]
+cuda = ["dep:gpufft-cuda-sys", "dep:cudarc"]
+
+[dependencies]
+bytemuck.workspace = true
+log.workspace = true
+num-complex.workspace = true
+thiserror.workspace = true
+
+gpufft-vulkan-sys = { workspace = true, optional = true }
+ash = { workspace = true, optional = true }
+
+gpufft-cuda-sys = { workspace = true, optional = true }
+cudarc = { workspace = true, optional = true }
+
+[dev-dependencies]
+approx = { version = "0.5", default-features = false, features = ["std"] }
+env_logger = "0.11"
+rustfft = "6"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true

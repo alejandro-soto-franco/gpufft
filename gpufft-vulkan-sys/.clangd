@@ -1,0 +1,8 @@
+CompileFlags:
+  Add:
+    - -Ivendor/VkFFT
+    - -Ivendor/VkFFT/vkFFT
+    - -I/usr/include/glslang/Include
+    - -I/usr/include
+    - -DVKFFT_BACKEND=0
+    - -std=c11

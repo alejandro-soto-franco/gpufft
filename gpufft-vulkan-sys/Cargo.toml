@@ -1,0 +1,33 @@
+[package]
+name = "gpufft-vulkan-sys"
+description = "Raw FFI bindings to VkFFT (vendored). Internal plumbing for gpufft."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["fft", "vulkan", "vkfft", "ffi", "gpu"]
+categories = ["external-ffi-bindings", "science"]
+links = "gpufft_vkfft"
+include = [
+    "/src/**/*",
+    "/wrapper.h",
+    "/vkfft_shim.c",
+    "/build.rs",
+    "/vendor/VkFFT/LICENSE",
+    "/vendor/VkFFT/vkFFT/**/*",
+    "/vendor/VkFFT/half_lib/**/*",
+]
+
+[build-dependencies]
+cc.workspace = true
+bindgen.workspace = true
+pkg-config.workspace = true
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true

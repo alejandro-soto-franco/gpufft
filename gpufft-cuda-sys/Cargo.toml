@@ -1,0 +1,18 @@
+[package]
+name = "gpufft-cuda-sys"
+description = "Raw FFI bindings to cuFFT. Internal plumbing for gpufft. (Stub in v0.1.)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["fft", "cuda", "cufft", "ffi", "gpu"]
+categories = ["external-ffi-bindings", "science"]
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true

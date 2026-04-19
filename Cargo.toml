@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "gpufft",
+    "gpufft-vulkan-sys",
+    "gpufft-cuda-sys",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Alejandro Soto Franco <sotofranco.eng@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/alejandro-soto-franco/gpufft"
+homepage = "https://github.com/alejandro-soto-franco/gpufft"
+documentation = "https://docs.rs/gpufft"
+
+[workspace.dependencies]
+gpufft-vulkan-sys = { version = "0.1.0", path = "gpufft-vulkan-sys" }
+gpufft-cuda-sys = { version = "0.1.0", path = "gpufft-cuda-sys" }
+
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
+bindgen = "0.71"
+bytemuck = { version = "1", features = ["derive"] }
+cc = "1.1"
+cudarc = { version = "0.13", default-features = false, features = ["cuda-12050", "driver", "runtime"] }
+log = "0.4"
+num-complex = { version = "0.4", default-features = false, features = ["std", "bytemuck"] }
+pkg-config = "0.3"
+thiserror = { version = "2", default-features = false, features = ["std"] }
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+missing_safety_doc = "warn"
+ptr_as_ptr = "warn"
+ref_as_ptr = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
