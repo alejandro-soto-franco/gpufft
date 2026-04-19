@@ -7,10 +7,10 @@ use ash::vk;
 
 use super::buffer::VulkanBuffer;
 use super::error::VulkanError;
-use super::plan::VulkanPlan;
+use super::plan::{VulkanC2cPlan, VulkanC2rPlan, VulkanR2cPlan};
 use crate::backend::Device;
 use crate::plan::PlanDesc;
-use crate::scalar::Scalar;
+use crate::scalar::{Complex, Real, Scalar};
 
 /// Options controlling [`VulkanDevice`] construction.
 #[derive(Clone, Debug, Default)]
@@ -269,8 +269,16 @@ impl Device<super::VulkanBackend> for VulkanDevice {
         VulkanBuffer::new(self.ctx.clone(), len)
     }
 
-    fn plan<T: Scalar>(&self, desc: &PlanDesc) -> Result<VulkanPlan<T>, VulkanError> {
-        VulkanPlan::new(self.ctx.clone(), *desc)
+    fn plan_c2c<T: Complex>(&self, desc: &PlanDesc) -> Result<VulkanC2cPlan<T>, VulkanError> {
+        VulkanC2cPlan::new(self.ctx.clone(), *desc)
+    }
+
+    fn plan_r2c<F: Real>(&self, desc: &PlanDesc) -> Result<VulkanR2cPlan<F>, VulkanError> {
+        VulkanR2cPlan::new(self.ctx.clone(), *desc)
+    }
+
+    fn plan_c2r<F: Real>(&self, desc: &PlanDesc) -> Result<VulkanC2rPlan<F>, VulkanError> {
+        VulkanC2rPlan::new(self.ctx.clone(), *desc)
     }
 
     fn synchronize(&self) -> Result<(), VulkanError> {

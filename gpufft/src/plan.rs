@@ -1,12 +1,14 @@
 //! Plan description types.
 //!
 //! These types are backend-independent. Backends consume a [`PlanDesc`] and
-//! return a concrete plan that records dispatches for the requested shape
-//! and transform.
+//! return a concrete C2C, R2C, or C2R plan that records dispatches for the
+//! requested shape.
 
-/// Shape of an FFT.
+/// Shape of an FFT in the real-space domain.
 ///
-/// VkFFT and cuFFT both support 1D, 2D, and 3D transforms natively.
+/// For C2C transforms this is also the complex buffer shape. For R2C / C2R
+/// the complex side is half-sized on the last dimension (Hermitian-symmetric
+/// half-spectrum convention, shared by both VkFFT and cuFFT).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shape {
     /// One-dimensional FFT of length `n`.
@@ -18,12 +20,23 @@ pub enum Shape {
 }
 
 impl Shape {
-    /// Total number of elements per batch.
+    /// Real-space element count per batch (product of all dimensions).
     pub fn elements(&self) -> u64 {
         match self {
             Shape::D1(n) => *n as u64,
             Shape::D2([a, b]) => *a as u64 * *b as u64,
             Shape::D3([a, b, c]) => *a as u64 * *b as u64 * *c as u64,
+        }
+    }
+
+    /// Complex half-spectrum element count per batch. Last dimension is
+    /// replaced by `last / 2 + 1`, matching VkFFT and cuFFT conventions for
+    /// real transforms.
+    pub fn complex_half_elements(&self) -> u64 {
+        match self {
+            Shape::D1(n) => (*n as u64 / 2) + 1,
+            Shape::D2([a, b]) => *a as u64 * ((*b as u64 / 2) + 1),
+            Shape::D3([a, b, c]) => *a as u64 * *b as u64 * ((*c as u64 / 2) + 1),
         }
     }
 
@@ -37,36 +50,19 @@ impl Shape {
     }
 }
 
-/// Transform kind.
-///
-/// Only [`Transform::C2c`] is implemented in v0.1. The other variants are
-/// reserved so the API does not need to change when R2C/C2R support lands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Transform {
-    /// Complex-to-complex.
-    C2c,
-    /// Real-to-complex (half-spectrum output per VkFFT/cuFFT convention).
-    /// *Not implemented in v0.1.*
-    R2c,
-    /// Complex-to-real (inverse of [`Transform::R2c`]).
-    /// *Not implemented in v0.1.*
-    C2r,
-}
-
 /// Direction of an FFT execution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
-    /// Forward transform (sign convention follows the backend).
+    /// Forward transform (time to frequency).
     Forward,
-    /// Inverse transform.
+    /// Inverse transform (frequency to time).
     Inverse,
 }
 
 impl Direction {
     /// Returns 0 for [`Direction::Forward`], 1 for [`Direction::Inverse`].
     ///
-    /// Matches both VkFFT's `inverse` flag and cuFFT's `CUFFT_FORWARD`/
-    /// `CUFFT_INVERSE` integer constants.
+    /// Matches VkFFT's `inverse` flag and cuFFT's `CUFFT_FORWARD` / `CUFFT_INVERSE`.
     pub fn as_int(self) -> i32 {
         match self {
             Direction::Forward => 0,
@@ -76,20 +72,27 @@ impl Direction {
 }
 
 /// Specification of an FFT plan.
+///
+/// The same descriptor is used for C2C, R2C, and C2R; the transform kind is
+/// implied by which `plan_*` method is called on the device. `shape` is
+/// always the **real-space** shape — for R2C the complex output buffer is
+/// half-sized on the last dimension.
 #[derive(Clone, Copy, Debug)]
 pub struct PlanDesc {
-    /// Shape of the transform.
+    /// Real-space shape of the transform.
     pub shape: Shape,
-    /// Kind of transform.
-    pub transform: Transform,
-    /// Number of independent transforms to batch. Only meaningful for
-    /// 1D shapes in v0.1; must be 1 for 2D/3D.
+    /// Number of independent transforms to batch. Only meaningful for 1D
+    /// shapes; must be 1 for 2D/3D.
     pub batch: u32,
-    /// When `true`, the inverse transform is scaled by `1 / shape.elements()`
-    /// so that `forward` followed by `inverse` recovers the input exactly.
-    /// When `false` (the default, matching cuFFT and rustfft conventions),
-    /// the inverse is unnormalised and the composition scales by
-    /// `shape.elements()`.
+    /// When `true`, inverse transforms are scaled by `1 / shape.elements()`
+    /// so that forward followed by inverse recovers the input exactly.
+    ///
+    /// Affects [`C2cPlanOps::execute`](crate::C2cPlanOps::execute) when called
+    /// with [`Direction::Inverse`], and every [`C2rPlanOps::execute`](crate::C2rPlanOps::execute)
+    /// call. Forward C2C and R2C transforms are always unnormalised.
+    ///
+    /// When `false` (default, matching cuFFT and rustfft conventions), the
+    /// inverse is unnormalised and the composition scales by `shape.elements()`.
     pub normalize: bool,
 }
 
@@ -97,7 +100,6 @@ impl Default for PlanDesc {
     fn default() -> Self {
         Self {
             shape: Shape::D1(1),
-            transform: Transform::C2c,
             batch: 1,
             normalize: false,
         }

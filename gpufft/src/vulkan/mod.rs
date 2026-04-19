@@ -3,9 +3,14 @@
 //! The backend is a pure-[`ash`] Vulkan compute client. No graphics surface
 //! is created. Validation layers can be enabled through
 //! [`DeviceOptions::enable_validation`].
+//!
+//! R2C and C2R are scaffolded with typed plan stubs but the implementations
+//! are not yet wired; callers get [`VulkanError::Unsupported`]. Use the
+//! CUDA backend for R2C / C2R until VkFFT's strided real-buffer layout is
+//! integrated.
 
 use crate::backend::Backend;
-use crate::scalar::Scalar;
+use crate::scalar::{Complex, Real, Scalar};
 
 mod buffer;
 mod device;
@@ -16,7 +21,7 @@ mod plan;
 pub use buffer::VulkanBuffer;
 pub use device::{DeviceOptions, VulkanDevice};
 pub use error::VulkanError;
-pub use plan::VulkanPlan;
+pub use plan::{VulkanC2cPlan, VulkanC2rPlan, VulkanR2cPlan};
 
 /// Marker type implementing [`Backend`] for the VkFFT-backed Vulkan backend.
 #[derive(Clone, Copy, Debug)]
@@ -32,7 +37,9 @@ impl VulkanBackend {
 impl Backend for VulkanBackend {
     type Device = VulkanDevice;
     type Buffer<T: Scalar> = VulkanBuffer<T>;
-    type Plan<T: Scalar> = VulkanPlan<T>;
+    type C2cPlan<T: Complex> = VulkanC2cPlan<T>;
+    type R2cPlan<F: Real> = VulkanR2cPlan<F>;
+    type C2rPlan<F: Real> = VulkanC2rPlan<F>;
     type Error = VulkanError;
 
     const NAME: &'static str = "vulkan";

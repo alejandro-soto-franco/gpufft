@@ -46,9 +46,9 @@ pub enum VulkanError {
         code: i32,
     },
 
-    /// A requested transform variant is not yet implemented.
-    #[error("transform not implemented in v0.1: {0:?}")]
-    UnsupportedTransform(crate::plan::Transform),
+    /// A feature is not implemented in the current Vulkan backend build.
+    #[error("not implemented in Vulkan backend: {0}")]
+    Unsupported(&'static str),
 
     /// A requested scalar type is not yet supported by VkFFT on this build.
     #[error("scalar type not supported by Vulkan backend: {0}")]

@@ -54,20 +54,26 @@ a matching NVIDIA driver.
 
 ## Usage
 
+Each device exposes three plan types:
+
+| Method                | Use                                 |
+|-----------------------|-------------------------------------|
+| `plan_c2c::<T>()`     | complex-to-complex, in-place        |
+| `plan_r2c::<F>()`     | real-to-complex, forward only       |
+| `plan_c2r::<F>()`     | complex-to-real, inverse only       |
+
 ```rust
 use gpufft::{
-    vulkan::VulkanBackend, BufferOps, Device, Direction, PlanDesc, PlanOps, Shape, Transform,
+    vulkan::VulkanBackend, BufferOps, C2cPlanOps, Device, Direction, PlanDesc, Shape,
 };
 use num_complex::Complex32;
 
 let device = VulkanBackend::new_device(Default::default())?;
 let mut input = device.alloc::<Complex32>(1024)?;
-
 input.write(&host_data)?;
 
-let mut plan = device.plan::<Complex32>(&PlanDesc {
+let mut plan = device.plan_c2c::<Complex32>(&PlanDesc {
     shape: Shape::D1(1024),
-    transform: Transform::C2c,
     batch: 1,
     normalize: false,
 })?;
@@ -77,17 +83,36 @@ let mut host_out = vec![Complex32::default(); 1024];
 input.read(&mut host_out)?;
 ```
 
-Backend-generic code works identically against both backends:
+Backend-generic code works identically against any backend:
 
 ```rust
-use gpufft::{Backend, BufferOps, Direction, PlanOps};
+use gpufft::{Backend, C2cPlanOps, Direction};
+use num_complex::Complex32;
 
-fn forward<B: Backend>(
-    plan: &mut B::Plan<num_complex::Complex32>,
-    buf: &mut B::Buffer<num_complex::Complex32>,
+fn forward_c2c<B: Backend>(
+    plan: &mut B::C2cPlan<Complex32>,
+    buf: &mut B::Buffer<Complex32>,
 ) -> Result<(), B::Error> {
     plan.execute(buf, Direction::Forward)
 }
+```
+
+R2C (forward real-to-complex) and C2R (inverse complex-to-real) use
+Hermitian-symmetric half-spectra on the last dimension (`n / 2 + 1`), matching
+VkFFT and cuFFT conventions:
+
+```rust
+use gpufft::{BufferOps, Device, PlanDesc, R2cPlanOps, Shape};
+
+let mut real = device.alloc::<f32>(1024)?;
+let mut spectrum = device.alloc::<num_complex::Complex32>(513)?; // 1024/2 + 1
+
+let mut r2c = device.plan_r2c::<f32>(&PlanDesc {
+    shape: Shape::D1(1024),
+    batch: 1,
+    normalize: false,
+})?;
+r2c.execute(&real, &mut spectrum)?;
 ```
 
 ## Crate layout

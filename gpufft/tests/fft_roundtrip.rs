@@ -1,10 +1,8 @@
-//! Integration tests: FFT forward then inverse must recover the input.
+//! Integration tests: C2C forward then inverse must recover the input.
 
 #![cfg(feature = "vulkan")]
 
-use gpufft::{
-    BufferOps, Device, Direction, PlanDesc, PlanOps, Shape, Transform, vulkan::VulkanBackend,
-};
+use gpufft::{BufferOps, C2cPlanOps, Device, Direction, PlanDesc, Shape, vulkan::VulkanBackend};
 use num_complex::Complex32;
 
 fn init_device() -> Option<<VulkanBackend as gpufft::Backend>::Device> {
@@ -29,9 +27,8 @@ fn roundtrip_1d_complex32() {
     buf.write(&host).unwrap();
 
     let mut plan = dev
-        .plan::<Complex32>(&PlanDesc {
+        .plan_c2c::<Complex32>(&PlanDesc {
             shape: Shape::D1(n),
-            transform: Transform::C2c,
             batch: 1,
             normalize: true,
         })
@@ -64,9 +61,8 @@ fn roundtrip_2d_complex32() {
     buf.write(&host).unwrap();
 
     let mut plan = dev
-        .plan::<Complex32>(&PlanDesc {
+        .plan_c2c::<Complex32>(&PlanDesc {
             shape: Shape::D2([nx, ny]),
-            transform: Transform::C2c,
             batch: 1,
             normalize: true,
         })
@@ -100,9 +96,8 @@ fn roundtrip_3d_complex32() {
     buf.write(&host).unwrap();
 
     let mut plan = dev
-        .plan::<Complex32>(&PlanDesc {
+        .plan_c2c::<Complex32>(&PlanDesc {
             shape: Shape::D3([nx, ny, nz]),
-            transform: Transform::C2c,
             batch: 1,
             normalize: true,
         })

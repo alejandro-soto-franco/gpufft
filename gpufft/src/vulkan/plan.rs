@@ -1,12 +1,12 @@
-//! Vulkan FFT plan wrapping a VkFFT application.
+//! Vulkan FFT plan types wrapping a VkFFT application.
 //!
-//! A plan owns:
-//!
-//! - a dedicated `VkFFTApplication`,
-//! - a command pool and fence used exclusively for FFT dispatches,
-//! - an internal device-local VkBuffer that VkFFT reads and writes, and
-//! - [`HandleStorage`](super::handles::HandleStorage) whose u64 fields back
-//!   the pointer slots in `VkFFTConfiguration`.
+//! - [`VulkanC2cPlan`]: implemented via `VkFFTConfiguration::performR2C = 0`.
+//!   Holds a [`PlanInner`] whose handle storage outlives the VkFFT app so
+//!   retained pointers remain valid across every `VkFFTAppend`.
+//! - [`VulkanR2cPlan`] / [`VulkanC2rPlan`]: scaffolded with the correct
+//!   type signatures but not yet implemented. `new` returns
+//!   [`VulkanError::Unsupported`] so downstream `Device::plan_r2c` /
+//!   `plan_c2r` surface the failure immediately rather than at execute time.
 //!
 //! The handle storage is the critical invariant: VkFFT retains pointers
 //! from the configuration for later `VkFFTAppend` calls, so the u64
@@ -24,12 +24,12 @@ use super::buffer::VulkanBuffer;
 use super::device::VulkanContext;
 use super::error::VulkanError;
 use super::handles::HandleStorage;
-use crate::backend::PlanOps;
-use crate::plan::{Direction, PlanDesc, Shape, Transform};
-use crate::scalar::{Precision, Scalar};
+use crate::backend::{C2cPlanOps, C2rPlanOps, R2cPlanOps};
+use crate::plan::{Direction, PlanDesc, Shape};
+use crate::scalar::{Complex, Precision, Real};
 
-/// A VkFFT-backed FFT plan.
-pub struct VulkanPlan<T: Scalar> {
+/// VkFFT-backed complex-to-complex in-place FFT plan.
+pub struct VulkanC2cPlan<T: Complex> {
     inner: Box<PlanInner>,
     _marker: PhantomData<T>,
 }
@@ -54,9 +54,9 @@ struct PlanInner {
     desc: PlanDesc,
 }
 
-impl<T: Scalar> VulkanPlan<T> {
+impl<T: Complex> VulkanC2cPlan<T> {
     pub(crate) fn new(ctx: Arc<VulkanContext>, desc: PlanDesc) -> Result<Self, VulkanError> {
-        validate_desc::<T>(&desc)?;
+        validate_desc(&desc)?;
 
         let element_count = (desc.shape.elements() * desc.batch as u64) as usize;
         let size_bytes = (element_count * T::BYTES) as u64;
@@ -184,7 +184,7 @@ impl<T: Scalar> VulkanPlan<T> {
     }
 }
 
-impl<T: Scalar> PlanOps<super::VulkanBackend, T> for VulkanPlan<T> {
+impl<T: Complex> C2cPlanOps<super::VulkanBackend, T> for VulkanC2cPlan<T> {
     fn execute(
         &mut self,
         buffer: &mut VulkanBuffer<T>,
@@ -220,11 +220,8 @@ impl<T: Scalar> PlanOps<super::VulkanBackend, T> for VulkanPlan<T> {
     }
 }
 
-impl<T: Scalar> Drop for VulkanPlan<T> {
+impl<T: Complex> Drop for VulkanC2cPlan<T> {
     fn drop(&mut self) {
-        // Delete VkFFT resources before destroying the Vulkan objects they
-        // reference. `handles` drops together with `inner`.
-        //
         // SAFETY: app was initialised by `gpufft_vkfft_init`; deleteVkFFT is
         // the matching teardown. The Vulkan handles remain valid for the
         // duration of this drop.
@@ -241,15 +238,7 @@ impl<T: Scalar> Drop for VulkanPlan<T> {
     }
 }
 
-fn validate_desc<T: Scalar>(desc: &PlanDesc) -> Result<(), VulkanError> {
-    if !matches!(desc.transform, Transform::C2c) {
-        return Err(VulkanError::UnsupportedTransform(desc.transform));
-    }
-    if !T::IS_COMPLEX {
-        return Err(VulkanError::UnsupportedScalar(
-            "v0.1 C2C transforms require a complex scalar (Complex32 or Complex64)",
-        ));
-    }
+fn validate_desc(desc: &PlanDesc) -> Result<(), VulkanError> {
     if desc.batch == 0 {
         return Err(VulkanError::InvalidPlan("batch must be at least 1"));
     }
@@ -267,8 +256,8 @@ fn copy_buffer(
     dst: vk::Buffer,
     size_bytes: u64,
 ) -> Result<(), VulkanError> {
-    // SAFETY: see buffer.rs `copy_buffer_to_buffer`; this is the same recipe
-    // but against the context-level transfer pool and fence.
+    // SAFETY: command buffer lifecycle (allocate, begin, end, submit, wait,
+    // free) is fully sequenced within this block; fence pairs with the wait.
     unsafe {
         let alloc = vk::CommandBufferAllocateInfo::default()
             .command_pool(ctx.transfer_pool)
@@ -315,7 +304,7 @@ fn append_and_execute(inner: &PlanInner, direction: Direction) -> Result<i32, Vu
 
     // SAFETY: command buffer is allocated, recorded, submitted, waited on,
     // and freed within the same unsafe block. `gpufft_vkfft_append` takes
-    // stable pointers into `launch_handles`, whose lifetime covers the
+    // stable pointers into local variables whose lifetime covers the
     // entire append-submit-wait sequence.
     unsafe {
         let alloc = vk::CommandBufferAllocateInfo::default()
@@ -389,5 +378,58 @@ fn append_and_execute(inner: &PlanInner, direction: Direction) -> Result<i32, Vu
             .free_command_buffers(inner.command_pool, &cmd_bufs);
 
         Ok(0)
+    }
+}
+
+/// R2C plan for the Vulkan backend. **Not yet implemented** — constructor
+/// returns [`VulkanError::Unsupported`]. Use the CUDA backend for R2C /
+/// C2R until VkFFT's strided real-buffer layout is wired.
+pub struct VulkanR2cPlan<F: Real> {
+    _marker: PhantomData<F>,
+}
+
+impl<F: Real> VulkanR2cPlan<F> {
+    pub(crate) fn new(_ctx: Arc<VulkanContext>, _desc: PlanDesc) -> Result<Self, VulkanError> {
+        Err(VulkanError::Unsupported(
+            "R2C on the Vulkan backend is not yet implemented; use the CUDA backend",
+        ))
+    }
+}
+
+impl<F: Real> R2cPlanOps<super::VulkanBackend, F> for VulkanR2cPlan<F> {
+    fn execute(
+        &mut self,
+        _input: &VulkanBuffer<F>,
+        _output: &mut VulkanBuffer<F::Complex>,
+    ) -> Result<(), VulkanError> {
+        Err(VulkanError::Unsupported(
+            "R2C on the Vulkan backend is not yet implemented",
+        ))
+    }
+}
+
+/// C2R plan for the Vulkan backend. **Not yet implemented** — see
+/// [`VulkanR2cPlan`].
+pub struct VulkanC2rPlan<F: Real> {
+    _marker: PhantomData<F>,
+}
+
+impl<F: Real> VulkanC2rPlan<F> {
+    pub(crate) fn new(_ctx: Arc<VulkanContext>, _desc: PlanDesc) -> Result<Self, VulkanError> {
+        Err(VulkanError::Unsupported(
+            "C2R on the Vulkan backend is not yet implemented; use the CUDA backend",
+        ))
+    }
+}
+
+impl<F: Real> C2rPlanOps<super::VulkanBackend, F> for VulkanC2rPlan<F> {
+    fn execute(
+        &mut self,
+        _input: &VulkanBuffer<F::Complex>,
+        _output: &mut VulkanBuffer<F>,
+    ) -> Result<(), VulkanError> {
+        Err(VulkanError::Unsupported(
+            "C2R on the Vulkan backend is not yet implemented",
+        ))
     }
 }
