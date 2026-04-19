@@ -29,15 +29,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Install Vulkan toolchain
+      - name: Install Vulkan SDK (LunarG)
         run: |
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc > /dev/null
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+            https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt-get update
-          sudo apt-get install -y \
-            libvulkan-dev \
-            vulkan-tools \
-            glslang-dev \
-            spirv-tools \
-            libspirv-tools-dev
+          sudo apt-get install -y vulkan-sdk
       - run: cargo clippy --workspace --features vulkan --all-targets
 
   build-vulkan:
@@ -46,15 +45,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Vulkan toolchain
+      - name: Install Vulkan SDK (LunarG)
         run: |
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc > /dev/null
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+            https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt-get update
-          sudo apt-get install -y \
-            libvulkan-dev \
-            vulkan-tools \
-            glslang-dev \
-            spirv-tools \
-            libspirv-tools-dev
+          sudo apt-get install -y vulkan-sdk
       - run: cargo build --workspace --features vulkan
 
   doc:
@@ -63,14 +61,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Vulkan toolchain
+      - name: Install Vulkan SDK (LunarG)
         run: |
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc > /dev/null
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list \
+            https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt-get update
-          sudo apt-get install -y \
-            libvulkan-dev \
-            glslang-dev \
-            spirv-tools \
-            libspirv-tools-dev
+          sudo apt-get install -y vulkan-sdk
       - run: cargo doc --workspace --no-deps --features vulkan
         env:
           RUSTDOCFLAGS: "-D warnings"
