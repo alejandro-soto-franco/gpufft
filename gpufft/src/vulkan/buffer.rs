@@ -29,11 +29,8 @@ impl<T: Scalar> VulkanBuffer<T> {
         let usage = vk::BufferUsageFlags::STORAGE_BUFFER
             | vk::BufferUsageFlags::TRANSFER_SRC
             | vk::BufferUsageFlags::TRANSFER_DST;
-        let (buffer, memory, _) = ctx.allocate_buffer(
-            size_bytes,
-            usage,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        )?;
+        let (buffer, memory, _) =
+            ctx.allocate_buffer(size_bytes, usage, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
 
         Ok(Self {
             ctx,
@@ -117,8 +114,8 @@ fn staging_copy_in<T: Scalar>(
                 VulkanError::vk("map_memory", e)
             })?;
         std::ptr::copy_nonoverlapping(
-            src.as_ptr() as *const u8,
-            ptr as *mut u8,
+            src.as_ptr().cast::<u8>(),
+            ptr.cast::<u8>(),
             size_bytes as usize,
         );
         ctx.device.unmap_memory(staging_mem);
@@ -168,8 +165,8 @@ fn staging_copy_out<T: Scalar>(
                 VulkanError::vk("map_memory", e)
             })?;
         std::ptr::copy_nonoverlapping(
-            ptr as *const u8,
-            dst.as_mut_ptr() as *mut u8,
+            ptr.cast_const().cast::<u8>(),
+            dst.as_mut_ptr().cast::<u8>(),
             size_bytes as usize,
         );
         ctx.device.unmap_memory(staging_mem);
@@ -227,7 +224,8 @@ fn copy_buffer_to_buffer(
             .wait_for_fences(&[ctx.transfer_fence], true, u64::MAX)
             .map_err(|e| VulkanError::vk("wait_for_fences", e))?;
 
-        ctx.device.free_command_buffers(ctx.transfer_pool, &cmd_bufs);
+        ctx.device
+            .free_command_buffers(ctx.transfer_pool, &cmd_bufs);
     }
 
     Ok(())

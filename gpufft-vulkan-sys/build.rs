@@ -97,7 +97,10 @@ fn main() {
         .arg("-L/usr/lib64")
         .status()
         .expect("failed to run c++ for shared lib");
-    assert!(status.success(), "c++ failed to create libgpufft_vkfft_bundle.so");
+    assert!(
+        status.success(),
+        "c++ failed to create libgpufft_vkfft_bundle.so"
+    );
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=dylib=gpufft_vkfft_bundle");

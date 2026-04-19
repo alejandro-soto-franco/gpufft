@@ -26,6 +26,10 @@ pub struct DeviceOptions {
 /// Shared Vulkan state held by [`VulkanDevice`], [`VulkanBuffer`], and
 /// [`VulkanPlan`] via [`Arc`] so resources can be cleaned up in any drop order.
 pub(crate) struct VulkanContext {
+    // Held to keep the dynamically-loaded Vulkan loader alive for the
+    // lifetime of the Instance, Device, and every resource that depends on
+    // it. Never read after construction.
+    #[allow(dead_code)]
     pub(crate) entry: ash::Entry,
     pub(crate) instance: ash::Instance,
     pub(crate) physical_device: vk::PhysicalDevice,
@@ -137,8 +141,7 @@ impl VulkanDevice {
             .engine_version(vk::make_api_version(0, 0, 1, 0))
             .api_version(vk::API_VERSION_1_3);
 
-        let validation_layer =
-            CString::new("VK_LAYER_KHRONOS_validation").unwrap();
+        let validation_layer = CString::new("VK_LAYER_KHRONOS_validation").unwrap();
         let mut enabled_layers: Vec<*const i8> = Vec::new();
         if options.enable_validation {
             // SAFETY: enumerate_instance_layer_properties is a safe Vulkan entry.
@@ -182,12 +185,13 @@ impl VulkanDevice {
             Some(i) => i,
             None => pick_discrete_or_first(&instance, &physical_devices),
         };
-        let physical_device = *physical_devices.get(pd_index).ok_or(VulkanError::NoDevice)?;
+        let physical_device = *physical_devices
+            .get(pd_index)
+            .ok_or(VulkanError::NoDevice)?;
 
         // SAFETY: physical device is valid.
-        let queue_family_properties = unsafe {
-            instance.get_physical_device_queue_family_properties(physical_device)
-        };
+        let queue_family_properties =
+            unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
         let queue_family_index = queue_family_properties
             .iter()
             .position(|q| q.queue_flags.contains(vk::QueueFlags::COMPUTE))
@@ -280,10 +284,7 @@ impl Device<super::VulkanBackend> for VulkanDevice {
     }
 }
 
-fn pick_discrete_or_first(
-    instance: &ash::Instance,
-    devices: &[vk::PhysicalDevice],
-) -> usize {
+fn pick_discrete_or_first(instance: &ash::Instance, devices: &[vk::PhysicalDevice]) -> usize {
     for (i, &pd) in devices.iter().enumerate() {
         // SAFETY: pd is from enumerate_physical_devices on `instance`.
         let props = unsafe { instance.get_physical_device_properties(pd) };

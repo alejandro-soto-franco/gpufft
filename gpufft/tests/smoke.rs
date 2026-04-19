@@ -8,6 +8,7 @@ fn vkfft_version_is_linked() {
 }
 
 #[test]
+#[allow(clippy::assertions_on_constants)]
 fn scalar_metadata() {
     use gpufft::{Precision, Scalar};
     use num_complex::Complex32;

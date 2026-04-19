@@ -3,7 +3,7 @@
 #![cfg(feature = "vulkan")]
 
 use gpufft::{
-    vulkan::VulkanBackend, BufferOps, Device, Direction, PlanDesc, PlanOps, Shape, Transform,
+    BufferOps, Device, Direction, PlanDesc, PlanOps, Shape, Transform, vulkan::VulkanBackend,
 };
 use num_complex::Complex32;
 

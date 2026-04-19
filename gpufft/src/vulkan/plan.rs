@@ -64,11 +64,8 @@ impl<T: Scalar> VulkanPlan<T> {
         let usage = vk::BufferUsageFlags::STORAGE_BUFFER
             | vk::BufferUsageFlags::TRANSFER_SRC
             | vk::BufferUsageFlags::TRANSFER_DST;
-        let (fft_buffer, fft_memory, _) = ctx.allocate_buffer(
-            size_bytes,
-            usage,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        )?;
+        let (fft_buffer, fft_memory, _) =
+            ctx.allocate_buffer(size_bytes, usage, vk::MemoryPropertyFlags::DEVICE_LOCAL)?;
 
         // Dedicated pool so concurrent plans do not fight for a shared pool.
         // SAFETY: ctx.device is valid; queue_family_index is the compute queue.
@@ -105,9 +102,14 @@ impl<T: Scalar> VulkanPlan<T> {
             size_bytes,
         );
 
+        // SAFETY: `VkFFTApplication` is a plain C struct (bindgen emits
+        // `Default` on it via `derive_default(true)`). Zeroing it is the
+        // shape that `initializeVkFFT` expects for an uninitialised app.
+        let zeroed_app: sys::VkFFTApplication = unsafe { std::mem::zeroed() };
+
         let mut inner = Box::new(PlanInner {
             ctx,
-            app: unsafe { std::mem::zeroed() },
+            app: zeroed_app,
             handles,
             command_pool,
             fence,
@@ -151,28 +153,26 @@ impl<T: Scalar> VulkanPlan<T> {
                 cfg.normalize = 1;
             }
 
-            cfg.physicalDevice = (&mut h.physical_device as *mut u64).cast();
-            cfg.device = (&mut h.device as *mut u64).cast();
-            cfg.queue = (&mut h.queue as *mut u64).cast();
-            cfg.commandPool = (&mut h.command_pool as *mut u64).cast();
-            cfg.fence = (&mut h.fence as *mut u64).cast();
-            cfg.buffer = (&mut h.buffer as *mut u64).cast();
-            cfg.bufferSize = &mut h.buffer_size as *mut u64;
+            cfg.physicalDevice = std::ptr::from_mut(&mut h.physical_device).cast();
+            cfg.device = std::ptr::from_mut(&mut h.device).cast();
+            cfg.queue = std::ptr::from_mut(&mut h.queue).cast();
+            cfg.commandPool = std::ptr::from_mut(&mut h.command_pool).cast();
+            cfg.fence = std::ptr::from_mut(&mut h.fence).cast();
+            cfg.buffer = std::ptr::from_mut(&mut h.buffer).cast();
+            cfg.bufferSize = std::ptr::from_mut(&mut h.buffer_size);
             cfg.bufferNum = 1;
 
-            sys::gpufft_vkfft_init(&mut inner.app as *mut _, cfg)
+            sys::gpufft_vkfft_init(std::ptr::from_mut(&mut inner.app), cfg)
         };
 
         if init_result != 0 {
             // SAFETY: resources are ours and not yet released.
             unsafe {
-                inner.ctx.device.destroy_fence(inner.fence, None);
-                inner
-                    .ctx
-                    .device
-                    .destroy_command_pool(inner.command_pool, None);
-                inner.ctx.device.destroy_buffer(inner.fft_buffer, None);
-                inner.ctx.device.free_memory(inner.fft_memory, None);
+                let ctx = &inner.ctx;
+                ctx.device.destroy_fence(inner.fence, None);
+                ctx.device.destroy_command_pool(inner.command_pool, None);
+                ctx.device.destroy_buffer(inner.fft_buffer, None);
+                ctx.device.free_memory(inner.fft_memory, None);
             }
             return Err(VulkanError::VkFft { code: init_result });
         }
@@ -198,14 +198,24 @@ impl<T: Scalar> PlanOps<super::VulkanBackend, T> for VulkanPlan<T> {
         }
 
         let ctx = self.inner.ctx.clone();
-        copy_buffer(&ctx, buffer.buffer, self.inner.fft_buffer, self.inner.size_bytes)?;
+        copy_buffer(
+            &ctx,
+            buffer.buffer,
+            self.inner.fft_buffer,
+            self.inner.size_bytes,
+        )?;
 
         let code = append_and_execute(&self.inner, direction)?;
         if code != 0 {
             return Err(VulkanError::VkFft { code });
         }
 
-        copy_buffer(&ctx, self.inner.fft_buffer, buffer.buffer, self.inner.size_bytes)?;
+        copy_buffer(
+            &ctx,
+            self.inner.fft_buffer,
+            buffer.buffer,
+            self.inner.size_bytes,
+        )?;
         Ok(())
     }
 }
@@ -219,15 +229,14 @@ impl<T: Scalar> Drop for VulkanPlan<T> {
         // the matching teardown. The Vulkan handles remain valid for the
         // duration of this drop.
         unsafe {
-            sys::gpufft_vkfft_delete(&mut self.inner.app as *mut _);
-            self.inner.ctx.device.device_wait_idle().ok();
-            self.inner.ctx.device.destroy_fence(self.inner.fence, None);
-            self.inner
-                .ctx
-                .device
+            sys::gpufft_vkfft_delete(std::ptr::from_mut(&mut self.inner.app));
+            let ctx = &self.inner.ctx;
+            ctx.device.device_wait_idle().ok();
+            ctx.device.destroy_fence(self.inner.fence, None);
+            ctx.device
                 .destroy_command_pool(self.inner.command_pool, None);
-            self.inner.ctx.device.destroy_buffer(self.inner.fft_buffer, None);
-            self.inner.ctx.device.free_memory(self.inner.fft_memory, None);
+            ctx.device.destroy_buffer(self.inner.fft_buffer, None);
+            ctx.device.free_memory(self.inner.fft_memory, None);
         }
     }
 }
@@ -294,7 +303,8 @@ fn copy_buffer(
             .wait_for_fences(&[ctx.transfer_fence], true, u64::MAX)
             .map_err(|e| VulkanError::vk("wait_for_fences", e))?;
 
-        ctx.device.free_command_buffers(ctx.transfer_pool, &cmd_bufs);
+        ctx.device
+            .free_command_buffers(ctx.transfer_pool, &cmd_bufs);
     }
 
     Ok(())
@@ -333,13 +343,13 @@ fn append_and_execute(inner: &PlanInner, direction: Direction) -> Result<i32, Vu
         let mut buf_handle = inner.fft_buffer.as_raw();
 
         let mut params: sys::VkFFTLaunchParams = std::mem::zeroed();
-        params.commandBuffer = (&mut cmd_buf_raw as *mut u64).cast();
-        params.buffer = (&mut buf_handle as *mut u64).cast();
+        params.commandBuffer = std::ptr::from_mut(&mut cmd_buf_raw).cast();
+        params.buffer = std::ptr::from_mut(&mut buf_handle).cast();
 
         let code = sys::gpufft_vkfft_append(
-            (&inner.app as *const sys::VkFFTApplication).cast_mut(),
+            std::ptr::from_ref(&inner.app).cast_mut(),
             inverse,
-            &mut params as *mut _,
+            std::ptr::from_mut(&mut params),
         );
 
         inner

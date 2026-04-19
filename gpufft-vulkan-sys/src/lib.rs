@@ -18,6 +18,11 @@
 #![allow(dead_code)]
 #![allow(improper_ctypes)]
 #![allow(missing_docs)]
+// bindgen emits unsafe blocks wrapping C calls with `wrap_unsafe_ops(true)`;
+// the safety contract for each call lives in the wrapper's own doc comment
+// rather than on every generated block.
+#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::missing_safety_doc)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
