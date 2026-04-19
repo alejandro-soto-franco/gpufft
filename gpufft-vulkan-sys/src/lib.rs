@@ -1,16 +1,16 @@
 //! Raw FFI bindings to the vendored VkFFT C++ library.
 //!
-//! This crate is internal plumbing for [`gpufft`]. It exposes the minimal
-//! subset of VkFFT needed to initialize an FFT application from a Rust-built
-//! `VkFFTConfiguration`, append dispatches to a caller-allocated Vulkan
-//! command buffer via `VkFFTAppend`, and release resources on drop.
+//! This crate is internal plumbing for the `gpufft` crate. It exposes the
+//! minimal subset of VkFFT needed to initialize an FFT application from a
+//! Rust-built `VkFFTConfiguration`, append dispatches to a caller-allocated
+//! Vulkan command buffer via `VkFFTAppend`, and release resources on drop.
 //!
 //! # Safety
 //!
 //! Every item in this crate is `unsafe` by construction. Lifetimes of the
 //! Vulkan handles and of the storage backing the `VkFFTConfiguration`
 //! pointer fields are the caller's responsibility. Downstream crates should
-//! depend on [`gpufft`] instead, which wraps these calls in a typed API.
+//! depend on `gpufft` instead, which wraps these calls in a typed API.
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]

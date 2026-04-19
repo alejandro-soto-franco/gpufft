@@ -1,0 +1,4 @@
+CompileFlags:
+  Add:
+    - -I/usr/local/cuda/include
+    - -std=c11

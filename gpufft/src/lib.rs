@@ -4,10 +4,10 @@
 //! multiple GPU backends. Backends are selected at build time via Cargo
 //! features; at least one must be enabled.
 //!
-//! | Feature  | Backend module     | Underlying library |
-//! |----------|--------------------|--------------------|
-//! | `vulkan` | [`vulkan`]         | VkFFT (vendored)   |
-//! | `cuda`   | [`cuda`]           | cuFFT (system)     |
+//! | Feature  | Backend module       | Underlying library |
+//! |----------|----------------------|--------------------|
+//! | `vulkan` | [`vulkan`]           | VkFFT (vendored)   |
+//! | `cuda`   | `cuda` (when enabled)| cuFFT (system)     |
 //!
 //! # Quick start
 //!

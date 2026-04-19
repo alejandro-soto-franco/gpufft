@@ -15,7 +15,7 @@ categories = ["science", "hardware-support", "mathematics"]
 [features]
 default = ["vulkan"]
 vulkan = ["dep:gpufft-vulkan-sys", "dep:ash"]
-cuda = ["dep:gpufft-cuda-sys", "dep:cudarc"]
+cuda = ["dep:gpufft-cuda-sys"]
 
 [dependencies]
 bytemuck.workspace = true
@@ -27,7 +27,6 @@ gpufft-vulkan-sys = { workspace = true, optional = true }
 ash = { workspace = true, optional = true }
 
 gpufft-cuda-sys = { workspace = true, optional = true }
-cudarc = { workspace = true, optional = true }
 
 [dev-dependencies]
 approx = { version = "0.5", default-features = false, features = ["std"] }

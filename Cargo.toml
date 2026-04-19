@@ -24,7 +24,6 @@ ash = { version = "0.38", default-features = false, features = ["loaded"] }
 bindgen = "0.71"
 bytemuck = { version = "1", features = ["derive"] }
 cc = "1.1"
-cudarc = { version = "0.13", default-features = false, features = ["cuda-12050", "driver", "runtime"] }
 log = "0.4"
 num-complex = { version = "0.4", default-features = false, features = ["std", "bytemuck"] }
 pkg-config = "0.3"

@@ -1,6 +1,6 @@
 [package]
 name = "gpufft-cuda-sys"
-description = "Raw FFI bindings to cuFFT. Internal plumbing for gpufft. (Stub in v0.1.)"
+description = "Raw FFI bindings to cuFFT + CUDA Runtime. Internal plumbing for gpufft."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,15 @@ repository.workspace = true
 homepage.workspace = true
 keywords = ["fft", "cuda", "cufft", "ffi", "gpu"]
 categories = ["external-ffi-bindings", "science"]
+links = "cufft"
+include = [
+    "/src/**/*",
+    "/wrapper.h",
+    "/build.rs",
+]
+
+[build-dependencies]
+bindgen.workspace = true
 
 [lib]
 doctest = false
