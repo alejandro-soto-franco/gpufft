@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-04-19
+
+### Changed
+- README overhauled to reflect the shipped v0.1 state: CUDA backend is real
+  (cuFFT via bindgen on `gpufft-cuda-sys`, not the earlier cudarc stub),
+  Vulkan backend is pure-`ash` (no wgpu dependency), compute-shader padder
+  lands in `shaders/stride_copy.comp`, R2C / C2R convention documented,
+  benchmark table added, design notes and the VkFFT C2R investigation
+  referenced.
+
+No API changes; republishing for the accurate metadata.
+
 ## [Unreleased]
 
 ### Added

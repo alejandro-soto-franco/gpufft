@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Alejandro Soto Franco <sotofranco.eng@gmail.com>"]
@@ -17,8 +17,8 @@ homepage = "https://github.com/alejandro-soto-franco/gpufft"
 documentation = "https://docs.rs/gpufft"
 
 [workspace.dependencies]
-gpufft-vulkan-sys = { version = "0.1.0", path = "gpufft-vulkan-sys" }
-gpufft-cuda-sys = { version = "0.1.0", path = "gpufft-cuda-sys" }
+gpufft-vulkan-sys = { version = "0.1.1", path = "gpufft-vulkan-sys" }
+gpufft-cuda-sys = { version = "0.1.1", path = "gpufft-cuda-sys" }
 
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
 bindgen = "0.71"
