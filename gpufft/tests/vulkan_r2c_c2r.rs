@@ -62,6 +62,45 @@ fn vulkan_r2c_c2r_1d_f32() {
 }
 
 #[test]
+fn vulkan_r2c_c2r_3d_cubic_f32() {
+    let Some(dev) = init_device() else { return };
+
+    let (nx, ny, nz) = (32u32, 32u32, 32u32);
+    let real_total = (nx * ny * nz) as usize;
+    let complex_total = (nx as u64 * ny as u64 * (nz as u64 / 2 + 1)) as usize;
+
+    let host: Vec<f32> = (0..real_total).map(|i| ((i as f32) * 0.17).sin()).collect();
+
+    let mut real_in = dev.alloc::<f32>(real_total).unwrap();
+    real_in.write(&host).unwrap();
+    let mut spectrum = dev.alloc::<Complex32>(complex_total).unwrap();
+    let mut real_out = dev.alloc::<f32>(real_total).unwrap();
+
+    let desc = PlanDesc {
+        shape: Shape::D3([nx, ny, nz]),
+        batch: 1,
+        normalize: false,
+    };
+
+    let mut r2c = dev.plan_r2c::<f32>(&desc).unwrap();
+    r2c.execute(&real_in, &mut spectrum).unwrap();
+
+    let mut c2r = dev.plan_c2r::<f32>(&desc).unwrap();
+    c2r.execute(&spectrum, &mut real_out).unwrap();
+
+    let mut back = vec![0.0f32; real_total];
+    real_out.read(&mut back).unwrap();
+    scale_f32(&mut back, 1.0 / real_total as f32);
+
+    let linf = host
+        .iter()
+        .zip(back.iter())
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0f32, f32::max);
+    assert!(linf < 1e-3, "cubic 3D L-inf = {linf}");
+}
+
+#[test]
 fn vulkan_r2c_c2r_3d_f32() {
     let Some(dev) = init_device() else { return };
 

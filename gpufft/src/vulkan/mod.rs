@@ -15,7 +15,6 @@ use crate::scalar::{Complex, Real, Scalar};
 mod buffer;
 mod device;
 mod error;
-mod handles;
 mod plan;
 
 pub use buffer::VulkanBuffer;
