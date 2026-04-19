@@ -1,0 +1,11 @@
+CompileFlags:
+  Add:
+    - -xc++
+    - -std=c++17
+    - -DVKFFT_BACKEND=0
+    - -I../../gpufft-vulkan-sys/vendor/VkFFT
+    - -I../../gpufft-vulkan-sys/vendor/VkFFT/vkFFT
+    - -I/usr/include/glslang/Include
+    - -I/usr/include
+  Remove:
+    - -std=c11
