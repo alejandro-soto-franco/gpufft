@@ -37,7 +37,7 @@ jobs:
             https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt-get update
           sudo apt-get install -y vulkan-sdk
-      - run: cargo clippy --workspace --features vulkan --all-targets
+      - run: cargo clippy -p gpufft -p gpufft-vulkan-sys --features vulkan --all-targets
 
   build-vulkan:
     name: build (vulkan)
@@ -53,7 +53,7 @@ jobs:
             https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt-get update
           sudo apt-get install -y vulkan-sdk
-      - run: cargo build --workspace --features vulkan
+      - run: cargo build -p gpufft -p gpufft-vulkan-sys --features vulkan
 
   doc:
     name: docs
@@ -69,6 +69,6 @@ jobs:
             https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
           sudo apt-get update
           sudo apt-get install -y vulkan-sdk
-      - run: cargo doc --workspace --no-deps --features vulkan
+      - run: cargo doc -p gpufft -p gpufft-vulkan-sys --no-deps --features vulkan
         env:
           RUSTDOCFLAGS: "-D warnings"
