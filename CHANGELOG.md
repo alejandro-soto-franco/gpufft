@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration tests for C2C roundtrip (1D/2D/3D) on both backends, CUDA
   R2C+C2R, and Vulkan R2C+C2R (including a non-cubic shape).
 - `r2c_c2r` benchmark comparing Vulkan vs CUDA at vonkarman-typical sizes.
+- Stride-copy compute shader (`shaders/stride_copy.comp`, SPIR-V compiled at
+  build time via `glslangValidator`) replacing the R2C / C2R multi-region
+  `vkCmdCopyBuffer` padding step with a single compute dispatch. Benchmark
+  wins on NVIDIA: 32³ 3×, 64³ 6.9×, 128³ 7.5×, 256³ 2.8×. Vulkan now runs
+  2–3× slower than cuFFT (down from 10–24×).
 
 ### Fixed
 - Descriptor-set crash on `VkFFTAppend`: the VkFFT configuration pointed to

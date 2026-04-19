@@ -11,6 +11,13 @@ homepage.workspace = true
 documentation.workspace = true
 keywords = ["fft", "gpu", "vulkan", "cuda", "cufft"]
 categories = ["science", "hardware-support", "mathematics"]
+build = "build.rs"
+include = [
+    "/src/**/*",
+    "/shaders/**/*",
+    "/build.rs",
+    "/Cargo.toml",
+]
 
 [features]
 default = ["vulkan"]

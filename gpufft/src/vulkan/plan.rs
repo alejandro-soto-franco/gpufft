@@ -54,6 +54,7 @@ use gpufft_vulkan_sys as sys;
 use super::buffer::VulkanBuffer;
 use super::device::VulkanContext;
 use super::error::VulkanError;
+use super::kernels::StrideCopyKernel;
 use crate::backend::{C2cPlanOps, C2rPlanOps, R2cPlanOps};
 use crate::plan::{Direction, PlanDesc, Shape};
 use crate::scalar::{Complex, Precision, Real};
@@ -481,6 +482,9 @@ struct RealPlanInner {
     /// space). Same total bytes, reinterpreted per direction.
     fft_buffer: vk::Buffer,
     fft_memory: vk::DeviceMemory,
+    /// Stride-aware copy kernel: replaces the per-row `vkCmdCopyBuffer`
+    /// multi-region dance for padding / stripping the innermost axis.
+    stride_kernel: StrideCopyKernel,
     dims: RealDims,
     real_element_count: usize,
     complex_element_count: usize,
@@ -524,6 +528,22 @@ impl RealPlanInner {
             }
         };
 
+        let stride_kernel = match StrideCopyKernel::new(ctx.clone()) {
+            Ok(k) => k,
+            Err(e) => {
+                // SAFETY: same.
+                unsafe {
+                    ctx.device
+                        .free_command_buffers(command_pool, &[command_buffer]);
+                    ctx.device.destroy_fence(fence, None);
+                    ctx.device.destroy_command_pool(command_pool, None);
+                    ctx.device.destroy_buffer(fft_buffer, None);
+                    ctx.device.free_memory(fft_memory, None);
+                }
+                return Err(e);
+            }
+        };
+
         let handles = Handles::new(&ctx, command_pool, fence, fft_buffer, size_bytes);
 
         // SAFETY: POD zero.
@@ -538,6 +558,7 @@ impl RealPlanInner {
             command_buffer,
             fft_buffer,
             fft_memory,
+            stride_kernel,
             dims,
             real_element_count,
             complex_element_count,
@@ -583,54 +604,6 @@ fn destroy_real_inner(inner: &mut RealPlanInner) {
         ctx.device.destroy_command_pool(inner.command_pool, None);
         ctx.device.destroy_buffer(inner.fft_buffer, None);
         ctx.device.free_memory(inner.fft_memory, None);
-    }
-}
-
-fn record_pad_input(
-    ctx: &VulkanContext,
-    cmd: vk::CommandBuffer,
-    src: vk::Buffer,
-    dst: vk::Buffer,
-    n_rows: u64,
-    row_bytes: u64,
-    padded_bytes: u64,
-) {
-    let mut regions: Vec<vk::BufferCopy> = Vec::with_capacity(n_rows as usize);
-    for row in 0..n_rows {
-        regions.push(
-            vk::BufferCopy::default()
-                .src_offset(row * row_bytes)
-                .dst_offset(row * padded_bytes)
-                .size(row_bytes),
-        );
-    }
-    // SAFETY: cmd is recording; all regions lie inside the respective buffers.
-    unsafe {
-        ctx.device.cmd_copy_buffer(cmd, src, dst, &regions);
-    }
-}
-
-fn record_strip_output(
-    ctx: &VulkanContext,
-    cmd: vk::CommandBuffer,
-    src: vk::Buffer,
-    dst: vk::Buffer,
-    n_rows: u64,
-    row_bytes: u64,
-    padded_bytes: u64,
-) {
-    let mut regions: Vec<vk::BufferCopy> = Vec::with_capacity(n_rows as usize);
-    for row in 0..n_rows {
-        regions.push(
-            vk::BufferCopy::default()
-                .src_offset(row * padded_bytes)
-                .dst_offset(row * row_bytes)
-                .size(row_bytes),
-        );
-    }
-    // SAFETY: cmd is recording; regions are valid.
-    unsafe {
-        ctx.device.cmd_copy_buffer(cmd, src, dst, &regions);
     }
 }
 
@@ -705,21 +678,31 @@ impl<F: Real> R2cPlanOps<super::VulkanBackend, F> for VulkanR2cPlan<F> {
 
         let dims = self.inner.dims;
         let elem_bytes = self.inner.elem_bytes;
-        let row_bytes = dims.innermost * elem_bytes;
-        let padded_bytes = dims.padded_inner_reals * elem_bytes;
+        let elem_uints = (elem_bytes / 4) as u32;
+        let real_bytes = (self.inner.real_element_count as u64) * elem_bytes;
+        let padded_total_bytes = dims.n_rows * dims.padded_inner_reals * elem_bytes;
         let complex_bytes = dims.n_rows * dims.complex_inner * 2 * elem_bytes;
+
+        // Update descriptor set before recording: src=user real, dst=padded fft buffer.
+        self.inner.stride_kernel.update_descriptor(
+            input.buffer,
+            real_bytes,
+            self.inner.fft_buffer,
+            padded_total_bytes,
+        );
 
         begin_persistent_cmd(&self.inner.ctx, self.inner.command_buffer)?;
 
-        // Pad rows: user real -> internal padded real.
-        record_pad_input(
-            &self.inner.ctx,
+        // Compute-shader padder: tight reals -> padded reals.
+        let row_uints = (dims.innermost as u32) * elem_uints;
+        let src_stride_uints = (dims.innermost as u32) * elem_uints;
+        let dst_stride_uints = (dims.padded_inner_reals as u32) * elem_uints;
+        self.inner.stride_kernel.record_dispatch(
             self.inner.command_buffer,
-            input.buffer,
-            self.inner.fft_buffer,
-            dims.n_rows,
-            row_bytes,
-            padded_bytes,
+            row_uints,
+            src_stride_uints,
+            dst_stride_uints,
+            dims.n_rows as u32,
         );
         record_full_barrier(&self.inner.ctx, self.inner.command_buffer);
 
@@ -799,9 +782,18 @@ impl<F: Real> C2rPlanOps<super::VulkanBackend, F> for VulkanC2rPlan<F> {
 
         let dims = self.inner.dims;
         let elem_bytes = self.inner.elem_bytes;
-        let row_bytes = dims.innermost * elem_bytes;
-        let padded_bytes = dims.padded_inner_reals * elem_bytes;
+        let elem_uints = (elem_bytes / 4) as u32;
+        let real_bytes = (self.inner.real_element_count as u64) * elem_bytes;
+        let padded_total_bytes = dims.n_rows * dims.padded_inner_reals * elem_bytes;
         let complex_bytes = dims.n_rows * dims.complex_inner * 2 * elem_bytes;
+
+        // Update descriptor set before recording: src=padded fft_buffer, dst=user real.
+        self.inner.stride_kernel.update_descriptor(
+            self.inner.fft_buffer,
+            padded_total_bytes,
+            output.buffer,
+            real_bytes,
+        );
 
         begin_persistent_cmd(&self.inner.ctx, self.inner.command_buffer)?;
 
@@ -828,15 +820,16 @@ impl<F: Real> C2rPlanOps<super::VulkanBackend, F> for VulkanC2rPlan<F> {
         }
         record_full_barrier(&self.inner.ctx, self.inner.command_buffer);
 
-        // Strip padding when writing back to user's tight real buffer.
-        record_strip_output(
-            &self.inner.ctx,
+        // Compute-shader stripper: padded reals -> tight reals.
+        let row_uints = (dims.innermost as u32) * elem_uints;
+        let src_stride_uints = (dims.padded_inner_reals as u32) * elem_uints;
+        let dst_stride_uints = (dims.innermost as u32) * elem_uints;
+        self.inner.stride_kernel.record_dispatch(
             self.inner.command_buffer,
-            self.inner.fft_buffer,
-            output.buffer,
-            dims.n_rows,
-            row_bytes,
-            padded_bytes,
+            row_uints,
+            src_stride_uints,
+            dst_stride_uints,
+            dims.n_rows as u32,
         );
 
         end_cmd(&self.inner.ctx, self.inner.command_buffer)?;
