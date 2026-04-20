@@ -13,6 +13,12 @@ keywords = ["fft", "gpu", "vulkan", "cuda", "cufft"]
 categories = ["science", "hardware-support", "mathematics"]
 readme = "README.md"
 build = "build.rs"
+# Claim a `links` value so this crate's build-script metadata (specifically
+# `cargo:bundle_dir=...`, re-exported from gpufft-vulkan-sys) is surfaced
+# to direct downstream consumers as DEP_GPUFFT_BUNDLE_DIR. The name is a
+# metadata marker; this crate does not itself link a native library named
+# "gpufft".
+links = "gpufft"
 include = [
     "/src/**/*",
     "/shaders/**/*",

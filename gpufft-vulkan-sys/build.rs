@@ -105,6 +105,11 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=dylib=gpufft_vkfft_bundle");
     println!("cargo:rustc-link-arg=-Wl,-rpath,{}", out_dir.display());
+    // Expose the bundle OUT_DIR to downstream crates via `links` metadata
+    // (DEP_GPUFFT_VKFFT_BUNDLE_DIR). Consumer build scripts can bake an
+    // rpath into their bin targets; rustc-link-arg does not propagate
+    // across crate boundaries on its own.
+    println!("cargo:bundle_dir={}", out_dir.display());
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")

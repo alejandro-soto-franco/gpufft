@@ -12,6 +12,16 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
+    // Re-export the VkFFT bundle's OUT_DIR from gpufft-vulkan-sys so that
+    // direct consumers of this crate (which typically do not depend on the
+    // -sys crate directly) can bake an rpath into their bin targets. Cargo
+    // only propagates `cargo:<key>=<val>` metadata to crates that directly
+    // depend on the emitter; this crate stands in for that one-hop link.
+    println!("cargo:rerun-if-env-changed=DEP_GPUFFT_VKFFT_BUNDLE_DIR");
+    if let Ok(dir) = env::var("DEP_GPUFFT_VKFFT_BUNDLE_DIR") {
+        println!("cargo:bundle_dir={dir}");
+    }
+
     // Only compile shaders when the Vulkan backend is enabled; other
     // feature combinations do not need them.
     if env::var_os("CARGO_FEATURE_VULKAN").is_none() {
