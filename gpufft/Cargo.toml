@@ -11,12 +11,14 @@ homepage.workspace = true
 documentation.workspace = true
 keywords = ["fft", "gpu", "vulkan", "cuda", "cufft"]
 categories = ["science", "hardware-support", "mathematics"]
+readme = "README.md"
 build = "build.rs"
 include = [
     "/src/**/*",
     "/shaders/**/*",
     "/build.rs",
     "/Cargo.toml",
+    "/README.md",
 ]
 
 [features]

@@ -10,12 +10,14 @@ repository.workspace = true
 homepage.workspace = true
 keywords = ["fft", "vulkan", "vkfft", "ffi", "gpu"]
 categories = ["external-ffi-bindings", "science"]
+readme = "README.md"
 links = "gpufft_vkfft"
 include = [
     "/src/**/*",
     "/wrapper.h",
     "/vkfft_shim.c",
     "/build.rs",
+    "/README.md",
     "/vendor/VkFFT/LICENSE",
     "/vendor/VkFFT/vkFFT/**/*",
     "/vendor/VkFFT/half_lib/**/*",

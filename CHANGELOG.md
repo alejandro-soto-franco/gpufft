@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-04-20
+
+### Added
+- Package-level `README.md` in each published crate (`gpufft`,
+  `gpufft-vulkan-sys`, `gpufft-cuda-sys`) so crates.io renders a description
+  page. Subcrate READMEs clarify that the `*-sys` crates are internal
+  plumbing and point users at `gpufft`.
+
+No API changes; patch release for crates.io metadata only.
+
 ## [0.1.1] - 2026-04-19
 
 ### Changed

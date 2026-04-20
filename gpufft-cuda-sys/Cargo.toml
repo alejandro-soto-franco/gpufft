@@ -10,11 +10,13 @@ repository.workspace = true
 homepage.workspace = true
 keywords = ["fft", "cuda", "cufft", "ffi", "gpu"]
 categories = ["external-ffi-bindings", "science"]
+readme = "README.md"
 links = "cufft"
 include = [
     "/src/**/*",
     "/wrapper.h",
     "/build.rs",
+    "/README.md",
 ]
 
 [build-dependencies]
