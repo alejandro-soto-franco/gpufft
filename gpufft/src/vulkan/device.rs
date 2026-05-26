@@ -226,7 +226,28 @@ impl VulkanDevice {
             .queue_family_index(queue_family_index)
             .queue_priorities(&queue_priorities)];
 
-        let device_ci = vk::DeviceCreateInfo::default().queue_create_infos(&queue_ci);
+        // On Linux with the `cuda` feature compiled in, enable the device
+        // extensions required for OPAQUE_FD external-memory export. Without
+        // these, `ash::khr::external_memory_fd::Device::new` builds a
+        // function-pointer table whose `vkGetMemoryFdKHR` entry is null,
+        // and any later call panics non-recoverably from the load shim.
+        // The extensions are universally supported on NVIDIA + Mesa
+        // RADV/ANV; we treat their absence as a hard error here because the
+        // `shared::SharedFftBuffer` path is the only consumer of `cuda` +
+        // Linux + Vulkan and cannot function without them.
+        #[cfg(all(feature = "cuda", target_os = "linux"))]
+        let ext_ext_mem = CString::new("VK_KHR_external_memory").unwrap();
+        #[cfg(all(feature = "cuda", target_os = "linux"))]
+        let ext_ext_mem_fd = CString::new("VK_KHR_external_memory_fd").unwrap();
+        #[cfg(all(feature = "cuda", target_os = "linux"))]
+        let enabled_extensions: Vec<*const i8> =
+            vec![ext_ext_mem.as_ptr(), ext_ext_mem_fd.as_ptr()];
+        #[cfg(not(all(feature = "cuda", target_os = "linux")))]
+        let enabled_extensions: Vec<*const i8> = Vec::new();
+
+        let device_ci = vk::DeviceCreateInfo::default()
+            .queue_create_infos(&queue_ci)
+            .enabled_extension_names(&enabled_extensions);
 
         // SAFETY: instance, physical_device, and queue_ci are all valid.
         let device = unsafe {
