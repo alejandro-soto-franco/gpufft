@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-05-26
+
+### Added
+- `shared` feature (Linux + `vulkan` + `cuda`) for zero-copy Vulkan↔CUDA
+  interop. New module `gpufft::shared` exports `SharedMemory` (host-visible
+  mirror) and `SharedFftBuffer` (device-local FFT-ready memory) backed by
+  `VK_KHR_external_memory_fd` + `cudaImportExternalMemory`.
+- `VulkanC2cPlan::execute_shared` and `CudaC2cPlan::execute_shared`
+  inherent methods that run their respective FFT on a `SharedFftBuffer`.
+- `VulkanDevice::raw_handles` and `CudaDevice::raw_handles` accessors
+  exposing the underlying handles required for cross-backend interop.
+- `gpufft-cuda-sys`: bindgen allowlist extended for `cudaImportExternalMemory`,
+  `cudaExternalMemoryGetMappedBuffer`, `cudaDestroyExternalMemory`, and the
+  supporting handle/buffer descriptor types.
+
+### Changed
+- `VulkanDevice::new` now enables `VK_KHR_external_memory` +
+  `VK_KHR_external_memory_fd` under `cfg(all(feature = "cuda", target_os = "linux"))`.
+  No effect on non-shared builds.
+
 ## [0.1.2] - 2026-04-20
 
 ### Added

@@ -121,6 +121,53 @@ R2C / C2R into a single dispatch.
   handle fields for the application's lifetime, so all handle storage
   lives inside a boxed `Inner` struct with a stable heap address.
 
+## Shared memory
+
+On Linux with both `vulkan` and `cuda` features, the `shared` feature gates
+zero-copy interop between the two backends via `VK_KHR_external_memory_fd`
++ CUDA's `cudaImportExternalMemory`. The same physical allocation is
+addressable from both VkFFT and cuFFT plans — no host roundtrip, no
+staging buffer.
+
+```toml
+[dependencies]
+gpufft = { version = "0.1", features = ["shared"] }
+```
+
+```rust
+use gpufft::{
+    cuda::CudaBackend,
+    shared::SharedFftBuffer,
+    vulkan::VulkanBackend,
+    Backend, Direction, PlanDesc, Shape,
+};
+
+let vk_dev = VulkanBackend::new_device(Default::default())?;
+let cu_dev = CudaBackend::new_device(Default::default())?;
+let buf = SharedFftBuffer::new(&vk_dev, &cu_dev, 1024)?;
+
+let mut vk_plan = vk_dev.plan_c2c::<num_complex::Complex32>(&PlanDesc {
+    shape: Shape::D1(1024), batch: 1, normalize: false,
+})?;
+let mut cu_plan = cu_dev.plan_c2c::<num_complex::Complex32>(&PlanDesc {
+    shape: Shape::D1(1024), batch: 1, normalize: false,
+})?;
+
+vk_plan.execute_shared(&buf, Direction::Forward)?;
+cu_plan.execute_shared(&buf, Direction::Inverse)?;
+```
+
+**Constraints:**
+- Linux only (relies on FD-based external memory; Win32 / D3D handle types
+  are not yet wired).
+- The caller must construct both backends on the same physical GPU. No
+  UUID gate is enforced in v0.1 — cross-GPU import will either fail at
+  driver level or silently produce a non-shared mapping.
+- C2C only in v0.1. R2C / C2R `execute_shared` variants are a follow-up.
+- Normalization is NOT applied on the CUDA path (the runtime backend
+  rejects `PlanDesc::normalize = true`). For a forward-then-inverse pair
+  through CUDA, divide by N on the host or run the inverse on Vulkan.
+
 ## Non-goals (v0.1)
 
 - Cross-backend buffer sharing (external-memory interop is a later concern).
