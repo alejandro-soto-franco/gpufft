@@ -15,7 +15,7 @@ use crate::scalar::{Complex, Real, Scalar};
 /// Raw Vulkan handles for cross-backend interop. See [`crate::shared`].
 ///
 /// Returned by [`VulkanDevice::raw_handles`]. The `command_pool` and `fence`
-/// here are the device's transfer pool/fence — reuse them for short-lived
+/// here are the device's transfer pool/fence. Reuse them for short-lived
 /// shared-memory operations; do not destroy them (the device owns them).
 #[cfg(all(feature = "cuda", target_os = "linux"))]
 #[derive(Clone)]

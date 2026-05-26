@@ -76,7 +76,7 @@ fn one_plan_three_buffers_roundtrip_3d() {
         })
         .collect();
 
-    // Sequential same-direction calls across distinct buffers — the cartan
+    // Sequential same-direction calls across distinct buffers: the cartan
     // pattern: forward σ_x, forward σ_y, forward σ_z.
     for buf in buffers.iter_mut() {
         plan.execute(buf, Direction::Forward).unwrap();
@@ -140,7 +140,7 @@ fn one_plan_interleaved_roundtrips_3d() {
 
 /// Direct numeric assertion on the reporter's exact phrasing: a forward FFT
 /// of a constant-1 field should produce DC = N (not N normalized, not
-/// 1/N). Test on the SECOND buffer routed through a single plan — that's
+/// 1/N). Test on the SECOND buffer routed through a single plan: that's
 /// the call the bug corrupted.
 #[test]
 fn forward_dc_unchanged_across_buffers_3d() {

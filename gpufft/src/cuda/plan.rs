@@ -111,8 +111,8 @@ impl<T: Complex> Drop for CudaC2cPlan<T> {
 
 #[cfg(all(feature = "vulkan", target_os = "linux"))]
 impl<T: Complex> CudaC2cPlan<T> {
-    /// Execute the plan against a [`crate::shared::SharedFftBuffer`] — the
-    /// CUDA-side mapped pointer is bound directly to cuFFT, allowing the
+    /// Execute the plan against a [`crate::shared::SharedFftBuffer`].
+    /// The CUDA-side mapped pointer is bound directly to cuFFT, allowing the
     /// same physical allocation that VkFFT just wrote to be transformed
     /// in-place by cuFFT (or vice versa).
     ///

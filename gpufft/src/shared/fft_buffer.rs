@@ -3,7 +3,7 @@
 //! Like [`SharedMemory`](super::SharedMemory) but `DEVICE_LOCAL` instead of
 //! host-visible, so it is usable as the storage buffer for both VkFFT and
 //! cuFFT plans. Host transfers go through CUDA's `cudaMemcpy` against the raw
-//! device pointer — no Vulkan staging buffer needed.
+//! device pointer. No Vulkan staging buffer is needed.
 //!
 //! Pair this with `VulkanC2cPlan::execute_shared` and
 //! `CudaC2cPlan::execute_shared` (Tasks 6 + 7) to run forward and inverse
@@ -24,7 +24,7 @@ use super::SharedMemoryError;
 ///
 /// Backed by `DEVICE_LOCAL` Vulkan memory exported as an `OPAQUE_FD` handle
 /// and imported into CUDA via `cudaImportExternalMemory`. Both APIs address
-/// the same physical bytes — no host roundtrip, no staging buffer.
+/// the same physical bytes, with no host roundtrip and no staging buffer.
 ///
 /// The Vulkan side exposes a `VkBuffer` with `STORAGE_BUFFER | TRANSFER_SRC |
 /// TRANSFER_DST` usage, ready for VkFFT. The CUDA side exposes a

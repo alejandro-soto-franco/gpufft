@@ -55,7 +55,7 @@
 //! `VkFFTCheckUpdateBufferSet` (vkFFT_UpdateBuffers.h:633) decides whether
 //! to rebuild the descriptor by comparing the `launchParams->buffer`
 //! pointer address against the stored `app->configuration.buffer` pointer
-//! address — it does **not** dereference and compare the underlying
+//! address. It does **not** dereference and compare the underlying
 //! VkBuffer handles. Two heap-stable slots are kept on `C2cInner` and
 //! toggled on every observed buffer-handle change so the comparison
 //! always detects "different pointer" and rebuilds. Same-buffer repeats
@@ -436,7 +436,7 @@ impl<T: Complex> VulkanC2cPlan<T> {
 
 impl C2cInner {
     /// Prepare the heap-stable slots for a single C2C launch against a user
-    /// VkBuffer raw handle. Returns `(buffer_slot_ptr, cmd_slot_ptr)` —
+    /// VkBuffer raw handle. Returns `(buffer_slot_ptr, cmd_slot_ptr)`:
     /// pointers into stable inner-struct storage that VkFFT can compare and
     /// dereference safely. See the module-level "Plan reuse across distinct
     /// buffers" docs for the rationale behind the ping-pong scheme.
@@ -527,8 +527,8 @@ impl<T: Complex> Drop for VulkanC2cPlan<T> {
 
 #[cfg(all(feature = "shared", target_os = "linux"))]
 impl<T: Complex> VulkanC2cPlan<T> {
-    /// Execute the plan against a [`crate::shared::SharedFftBuffer`] — the
-    /// buffer is bound directly to VkFFT with no copy in or out, allowing
+    /// Execute the plan against a [`crate::shared::SharedFftBuffer`].
+    /// The buffer is bound directly to VkFFT with no copy in or out, allowing
     /// the same allocation to be re-used by [`crate::cuda::CudaC2cPlan`]
     /// via its own `execute_shared` companion.
     ///

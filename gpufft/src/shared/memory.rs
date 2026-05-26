@@ -6,14 +6,14 @@
 //! the runtime API (`cudaImportExternalMemory`).
 //!
 //! On Linux with NVIDIA's proprietary driver, both APIs end up pointing
-//! at the same physical bytes — no host roundtrip, no staging buffer.
+//! at the same physical bytes, with no host roundtrip and no staging buffer.
 //!
 //! Same-physical-GPU is assumed: importing memory from a different GPU
 //! than CUDA is bound to will either fail outright or silently produce
 //! a non-shared mapping. The minimal demo path here doesn't check the
 //! adapter↔device UUID; production use should.
 //!
-//! This module ships the foundation only — a host-visible mirror that
+//! This module ships the foundation only: a host-visible mirror that
 //! both backends can read/write. Promoting it to a full `SharedFftBuffer`
 //! that VkFftBackend and CuFftBackend can run FFTs against is tracked
 //! separately (Task 5).
@@ -30,7 +30,7 @@ use super::SharedMemoryError;
 /// A block of GPU-resident memory addressable from both Vulkan and CUDA.
 ///
 /// On Linux with NVIDIA's proprietary driver, both APIs end up pointing
-/// at the same physical bytes — no host roundtrip, no staging buffer.
+/// at the same physical bytes, with no host roundtrip and no staging buffer.
 pub struct SharedMemory {
     /// The Vulkan buffer handle backed by `vk_memory`.
     vk_buffer: vk::Buffer,
