@@ -6,3 +6,4 @@ Cargo.lock.bak
 .idea/
 .vscode/
 *.log
+target
