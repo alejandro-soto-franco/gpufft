@@ -43,6 +43,28 @@
 //! later `VkFFTAppend` calls. All handle storage lives inside a boxed
 //! `Inner` struct so the pointer targets are stable for the plan's
 //! lifetime.
+//!
+//! # Plan reuse across distinct buffers
+//!
+//! `VulkanC2cPlan::execute` / `execute_shared` may be called repeatedly
+//! against *different* [`crate::vulkan::buffer::VulkanBuffer`] (or
+//! `SharedFftBuffer`) instances with the same plan. The implementation
+//! handles this correctly by tracking the most recently bound `VkBuffer`
+//! raw handle on the plan and forcing VkFFT to re-bind its descriptor
+//! whenever the user's buffer changes. The mechanism: VkFFT's
+//! `VkFFTCheckUpdateBufferSet` (vkFFT_UpdateBuffers.h:633) decides whether
+//! to rebuild the descriptor by comparing the `launchParams->buffer`
+//! pointer address against the stored `app->configuration.buffer` pointer
+//! address — it does **not** dereference and compare the underlying
+//! VkBuffer handles. Two heap-stable slots are kept on `C2cInner` and
+//! toggled on every observed buffer-handle change so the comparison
+//! always detects "different pointer" and rebuilds. Same-buffer repeats
+//! pay only one `u64` equality check and zero VkFFT-side work beyond the
+//! normal append.
+//!
+//! R2C / C2R plans are unaffected: they always submit VkFFT against the
+//! plan's internal `fft_buffer` (heap-stable, never changes), so the
+//! pointer comparison above never trips.
 
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -291,6 +313,26 @@ struct C2cInner {
     scratch_buffer: vk::Buffer,
     scratch_memory: vk::DeviceMemory,
     element_count: usize,
+    /// Two heap-stable buffer slots used by `execute` / `execute_shared` for
+    /// the ping-pong forcing a VkFFT descriptor rebuild on buffer change.
+    /// VkFFT compares `app->configuration.buffer` against `launchParams.buffer`
+    /// by *pointer address*, not by VkBuffer value (see vkFFT_UpdateBuffers.h
+    /// `VkFFTCheckUpdateBufferSet`). Stable addresses inside the heap-allocated
+    /// `Inner` let us toggle between two distinct addresses whenever the
+    /// user's VkBuffer handle changes; same-buffer repeats stay on the same
+    /// slot and skip the rebuild (which is correct: same handle = same
+    /// descriptor).
+    exec_buf_slot_a: u64,
+    exec_buf_slot_b: u64,
+    exec_cmd_slot: u64,
+    /// Most recently bound VkBuffer raw handle, used to detect when a new
+    /// user buffer arrives and a descriptor rebuild must be forced. `0`
+    /// before the first call.
+    last_bound_buffer: u64,
+    /// Tracks which slot was last fed to VkFFT (false → A, true → B). The
+    /// next forced rebuild flips this and writes the new handle into the
+    /// other slot.
+    use_slot_b: bool,
 }
 
 impl<T: Complex> VulkanC2cPlan<T> {
@@ -341,6 +383,11 @@ impl<T: Complex> VulkanC2cPlan<T> {
             scratch_buffer,
             scratch_memory,
             element_count,
+            exec_buf_slot_a: 0,
+            exec_buf_slot_b: 0,
+            exec_cmd_slot: 0,
+            last_bound_buffer: 0,
+            use_slot_b: false,
         });
 
         // SAFETY: cfg pointers target boxed `inner.handles`; heap address stable.
@@ -373,6 +420,45 @@ impl<T: Complex> VulkanC2cPlan<T> {
     }
 }
 
+impl C2cInner {
+    /// Prepare the heap-stable slots for a single C2C launch against a user
+    /// VkBuffer raw handle. Returns `(buffer_slot_ptr, cmd_slot_ptr)` —
+    /// pointers into stable inner-struct storage that VkFFT can compare and
+    /// dereference safely. See the module-level "Plan reuse across distinct
+    /// buffers" docs for the rationale behind the ping-pong scheme.
+    fn prepare_launch_slots(&mut self, new_buffer: u64) -> (*mut u64, *mut u64) {
+        // Always refresh the command-buffer slot; the command buffer handle
+        // itself doesn't change across calls (it's plan-owned) but VkFFT
+        // doesn't keep a pointer comparison on it, so this is purely
+        // defensive.
+        self.exec_cmd_slot = self.command_buffer.as_raw();
+
+        // Decide which slot to write into. If the buffer handle is the same
+        // as last time, reuse the previous slot so VkFFT's pointer compare
+        // says "same address" and skips the descriptor rebuild (correct: the
+        // descriptor already points at the right buffer). If the handle
+        // changed, flip to the other slot so VkFFT sees a *different*
+        // pointer address and forces the descriptor rebuild.
+        if new_buffer != self.last_bound_buffer {
+            self.use_slot_b = !self.use_slot_b;
+            self.last_bound_buffer = new_buffer;
+        }
+        if self.use_slot_b {
+            self.exec_buf_slot_b = new_buffer;
+            (
+                std::ptr::from_mut(&mut self.exec_buf_slot_b),
+                std::ptr::from_mut(&mut self.exec_cmd_slot),
+            )
+        } else {
+            self.exec_buf_slot_a = new_buffer;
+            (
+                std::ptr::from_mut(&mut self.exec_buf_slot_a),
+                std::ptr::from_mut(&mut self.exec_cmd_slot),
+            )
+        }
+    }
+}
+
 impl<T: Complex> C2cPlanOps<super::VulkanBackend, T> for VulkanC2cPlan<T> {
     fn execute(
         &mut self,
@@ -388,14 +474,17 @@ impl<T: Complex> C2cPlanOps<super::VulkanBackend, T> for VulkanC2cPlan<T> {
 
         begin_persistent_cmd(&self.inner.ctx, self.inner.command_buffer)?;
 
-        // SAFETY: cmd is recording; slots outlive record+submit+wait.
-        unsafe {
-            let mut cmd_buf_slot: u64 = self.inner.command_buffer.as_raw();
-            let mut buffer_slot: u64 = buffer.buffer.as_raw();
+        let buffer_raw = buffer.buffer.as_raw();
+        let (buf_slot_ptr, cmd_slot_ptr) = self.inner.prepare_launch_slots(buffer_raw);
 
+        // SAFETY: slot pointers target heap-stable fields on `self.inner`,
+        // alive at least as long as `self`. VkFFT will dereference them and
+        // (re)bind the descriptor when the pointer address differs from its
+        // stored configuration.buffer; see prepare_launch_slots docs.
+        unsafe {
             let mut params: sys::VkFFTLaunchParams = std::mem::zeroed();
-            params.commandBuffer = std::ptr::from_mut(&mut cmd_buf_slot).cast();
-            params.buffer = std::ptr::from_mut(&mut buffer_slot).cast();
+            params.commandBuffer = cmd_slot_ptr.cast();
+            params.buffer = buf_slot_ptr.cast();
 
             let code = sys::gpufft_vkfft_append(
                 std::ptr::from_mut(&mut self.inner.app),
@@ -448,17 +537,20 @@ impl<T: Complex> VulkanC2cPlan<T> {
 
         begin_persistent_cmd(&self.inner.ctx, self.inner.command_buffer)?;
 
-        // SAFETY: cmd is recording; slot variables outlive record+submit+wait.
-        // The SharedFftBuffer's VkBuffer was bound to its own VkDeviceMemory
-        // at construction time (with the EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD
-        // export flag) and lives at least as long as `buf`.
-        unsafe {
-            let mut cmd_buf_slot: u64 = self.inner.command_buffer.as_raw();
-            let mut buffer_slot: u64 = buf.vk_buffer().as_raw();
+        let buffer_raw = buf.vk_buffer().as_raw();
+        let (buf_slot_ptr, cmd_slot_ptr) = self.inner.prepare_launch_slots(buffer_raw);
 
+        // SAFETY: slot pointers target heap-stable fields on `self.inner`,
+        // alive at least as long as `self`. The SharedFftBuffer's VkBuffer
+        // was bound to its own VkDeviceMemory at construction time (with the
+        // EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD export flag) and lives at
+        // least as long as `buf`. The ping-pong slot scheme in
+        // `prepare_launch_slots` forces VkFFT to rebuild its descriptor
+        // whenever this `buf` differs from the previous call's buffer.
+        unsafe {
             let mut params: sys::VkFFTLaunchParams = std::mem::zeroed();
-            params.commandBuffer = std::ptr::from_mut(&mut cmd_buf_slot).cast();
-            params.buffer = std::ptr::from_mut(&mut buffer_slot).cast();
+            params.commandBuffer = cmd_slot_ptr.cast();
+            params.buffer = buf_slot_ptr.cast();
 
             let code = sys::gpufft_vkfft_append(
                 std::ptr::from_mut(&mut self.inner.app),

@@ -10,6 +10,8 @@
 
 #![cfg(feature = "vulkan")]
 
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
 use gpufft::{BufferOps, C2cPlanOps, Device, Direction, PlanDesc, Shape, vulkan::VulkanBackend};
 use num_complex::Complex32;
 
@@ -22,11 +24,23 @@ fn init_device() -> Option<<VulkanBackend as gpufft::Backend>::Device> {
     }
 }
 
+/// Serialize all three tests against a process-wide mutex. Three Vulkan
+/// contexts running in parallel on a single GPU exhaust device queue
+/// resources and trip `ERROR_DEVICE_LOST` on this host; the bug under
+/// test is single-threaded by nature, so contention is unnecessary.
+fn serial() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+}
+
 /// Reuse one normalized 3D C2C plan across three different buffers, doing a
 /// full forward+inverse round-trip on each. With the bug, the second and
 /// third buffers' inverse pass produced wrong amplitudes.
 #[test]
 fn one_plan_three_buffers_roundtrip_3d() {
+    let _g = serial();
     let Some(dev) = init_device() else { return };
 
     let (nx, ny, nz) = (32u32, 32u32, 32u32);
@@ -88,6 +102,7 @@ fn one_plan_three_buffers_roundtrip_3d() {
 /// pattern a naive caller would use if they didn't know about the bug.
 #[test]
 fn one_plan_interleaved_roundtrips_3d() {
+    let _g = serial();
     let Some(dev) = init_device() else { return };
 
     let (nx, ny, nz) = (32u32, 32u32, 32u32);
@@ -129,6 +144,7 @@ fn one_plan_interleaved_roundtrips_3d() {
 /// the call the bug corrupted.
 #[test]
 fn forward_dc_unchanged_across_buffers_3d() {
+    let _g = serial();
     let Some(dev) = init_device() else { return };
 
     let (nx, ny, nz) = (32u32, 32u32, 32u32);
