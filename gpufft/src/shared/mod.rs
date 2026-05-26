@@ -1,12 +1,15 @@
 //! Vulkan↔CUDA zero-copy interop (Linux only, both backends required).
 //!
-//! See [`SharedMemory`] (host-visible mirror) for the zero-copy buffer type.
-//! `SharedFftBuffer` (device-local FFT-ready memory) lands in Task 5.
+//! - [`SharedMemory`] — host-visible mirror.
+//! - [`SharedFftBuffer`] — device-local FFT-ready memory.
 
 #![cfg(all(feature = "vulkan", feature = "cuda", target_os = "linux"))]
 
 mod memory;
+mod fft_buffer;
+
 pub use memory::SharedMemory;
+pub use fft_buffer::SharedFftBuffer;
 
 use thiserror::Error;
 
