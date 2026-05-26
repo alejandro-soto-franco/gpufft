@@ -422,6 +422,59 @@ impl<T: Complex> Drop for VulkanC2cPlan<T> {
     }
 }
 
+#[cfg(all(feature = "shared", target_os = "linux"))]
+impl<T: Complex> VulkanC2cPlan<T> {
+    /// Execute the plan against a [`crate::shared::SharedFftBuffer`] — the
+    /// buffer is bound directly to VkFFT with no copy in or out, allowing
+    /// the same allocation to be re-used by [`crate::cuda::CudaC2cPlan`]
+    /// via its own `execute_shared` companion.
+    ///
+    /// Requires the `shared` feature + Linux. The caller is responsible for
+    /// ensuring `buf.len() == plan.element_count()` (matching the shape +
+    /// batch the plan was built with).
+    pub fn execute_shared(
+        &mut self,
+        buf: &crate::shared::SharedFftBuffer,
+        direction: Direction,
+    ) -> Result<(), VulkanError> {
+        use ash::vk::Handle;
+
+        if buf.len() != self.inner.element_count {
+            return Err(VulkanError::LengthMismatch {
+                expected: self.inner.element_count,
+                got: buf.len(),
+            });
+        }
+
+        begin_persistent_cmd(&self.inner.ctx, self.inner.command_buffer)?;
+
+        // SAFETY: cmd is recording; slot variables outlive record+submit+wait.
+        // The SharedFftBuffer's VkBuffer was bound to its own VkDeviceMemory
+        // at construction time (with the EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD
+        // export flag) and lives at least as long as `buf`.
+        unsafe {
+            let mut cmd_buf_slot: u64 = self.inner.command_buffer.as_raw();
+            let mut buffer_slot: u64 = buf.vk_buffer().as_raw();
+
+            let mut params: sys::VkFFTLaunchParams = std::mem::zeroed();
+            params.commandBuffer = std::ptr::from_mut(&mut cmd_buf_slot).cast();
+            params.buffer = std::ptr::from_mut(&mut buffer_slot).cast();
+
+            let code = sys::gpufft_vkfft_append(
+                std::ptr::from_mut(&mut self.inner.app),
+                direction.as_int(),
+                std::ptr::from_mut(&mut params),
+            );
+            end_cmd(&self.inner.ctx, self.inner.command_buffer)?;
+            if code != 0 {
+                return Err(VulkanError::VkFft { code });
+            }
+        }
+
+        submit_and_wait(&self.inner.ctx, self.inner.command_buffer, self.inner.fence)
+    }
+}
+
 fn destroy_c2c_inner(inner: &mut C2cInner) {
     // SAFETY: all handles are owned by us and not yet destroyed.
     unsafe {
