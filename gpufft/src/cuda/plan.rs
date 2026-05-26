@@ -109,6 +109,66 @@ impl<T: Complex> Drop for CudaC2cPlan<T> {
     }
 }
 
+#[cfg(all(feature = "vulkan", target_os = "linux"))]
+impl<T: Complex> CudaC2cPlan<T> {
+    /// Execute the plan against a [`crate::shared::SharedFftBuffer`] — the
+    /// CUDA-side mapped pointer is bound directly to cuFFT, allowing the
+    /// same physical allocation that VkFFT just wrote to be transformed
+    /// in-place by cuFFT (or vice versa).
+    ///
+    /// Requires the `shared` feature + Linux. Normalization is NOT applied
+    /// (gpufft's CUDA backend rejects `PlanDesc::normalize = true` at plan
+    /// build time, so the plan never carries that flag); callers running a
+    /// forward-then-inverse pair through CUDA must divide by N on the host
+    /// or use the Vulkan backend for the inverse half.
+    pub fn execute_shared(
+        &mut self,
+        buf: &crate::shared::SharedFftBuffer,
+        direction: Direction,
+    ) -> Result<(), CudaError> {
+        if buf.len() != self.element_count {
+            return Err(CudaError::LengthMismatch {
+                expected: self.element_count,
+                got: buf.len(),
+            });
+        }
+
+        let sign: i32 = match direction {
+            Direction::Forward => sys::CUFFT_FORWARD,
+            Direction::Inverse => sys::CUFFT_INVERSE as i32,
+        };
+
+        self.ctx.make_current()?;
+        // SAFETY: `plan` was created by `cufftPlan*` for the same element
+        // count + precision; `buf.cuda_device_ptr()` is a CUDA-mapped
+        // pointer to the shared external memory (imported via
+        // cudaImportExternalMemory). In-place: same ptr for input + output.
+        unsafe {
+            let ptr = buf.cuda_device_ptr();
+            let code = match T::PRECISION {
+                Precision::F32 => sys::cufftExecC2C(
+                    self.plan,
+                    ptr.cast::<sys::cufftComplex>(),
+                    ptr.cast::<sys::cufftComplex>(),
+                    sign,
+                ),
+                Precision::F64 => sys::cufftExecZ2Z(
+                    self.plan,
+                    ptr.cast::<sys::cufftDoubleComplex>(),
+                    ptr.cast::<sys::cufftDoubleComplex>(),
+                    sign,
+                ),
+            };
+            check_cufft("cufftExec (C2C/Z2Z) [shared]", code)?;
+            check_cufft(
+                "cudaDeviceSynchronize",
+                map_cuda_to_cufft(sys::cudaDeviceSynchronize()),
+            )?;
+        }
+        Ok(())
+    }
+}
+
 /// Plan for a real-to-complex forward FFT on CUDA.
 pub struct CudaR2cPlan<F: Real> {
     ctx: Arc<CudaContext>,
