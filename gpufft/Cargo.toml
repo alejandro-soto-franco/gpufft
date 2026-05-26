@@ -31,6 +31,7 @@ include = [
 default = ["vulkan"]
 vulkan = ["dep:gpufft-vulkan-sys", "dep:ash"]
 cuda = ["dep:gpufft-cuda-sys"]
+shared = ["vulkan", "cuda"]
 
 [dependencies]
 bytemuck.workspace = true
