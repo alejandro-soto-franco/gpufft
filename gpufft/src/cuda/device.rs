@@ -34,6 +34,19 @@ impl CudaContext {
     }
 }
 
+/// Raw CUDA handles for cross-backend interop. See [`crate::shared`].
+///
+/// Returned by [`CudaDevice::raw_handles`]. Since gpufft's CUDA path uses
+/// the runtime API (which scopes per-thread current device, not a shareable
+/// `CUcontext`), the shared-memory implementation must call
+/// [`CudaDevice::make_current`] before any external-memory entry point.
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug)]
+pub struct RawCudaHandles {
+    /// Ordinal of the CUDA device this handle is bound to.
+    pub device_ordinal: i32,
+}
+
 /// A CUDA compute device bound to a single physical GPU.
 pub struct CudaDevice {
     pub(crate) ctx: Arc<CudaContext>,
@@ -74,6 +87,21 @@ impl CudaDevice {
     /// Return the ordinal of the selected device.
     pub fn ordinal(&self) -> i32 {
         self.ctx.device_ordinal
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl CudaDevice {
+    /// Raw CUDA handles for cross-backend interop. See [`crate::shared`].
+    pub fn raw_handles(&self) -> RawCudaHandles {
+        RawCudaHandles { device_ordinal: self.ctx.device_ordinal }
+    }
+
+    /// Bind the calling thread to this device's ordinal via `cudaSetDevice`.
+    /// Required before any external-memory entry point invoked from outside
+    /// the public `Device` trait methods.
+    pub fn make_current(&self) -> Result<(), super::error::CudaError> {
+        self.ctx.make_current()
     }
 }
 

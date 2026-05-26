@@ -24,6 +24,8 @@ mod plan;
 
 pub use buffer::CudaBuffer;
 pub use device::{CudaDevice, DeviceOptions};
+#[cfg(target_os = "linux")]
+pub use device::RawCudaHandles;
 pub use error::CudaError;
 pub use plan::{CudaC2cPlan, CudaC2rPlan, CudaR2cPlan};
 
