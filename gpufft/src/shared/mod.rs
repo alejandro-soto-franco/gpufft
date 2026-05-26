@@ -1,7 +1,7 @@
 //! Vulkan↔CUDA zero-copy interop (Linux only, both backends required).
 //!
-//! - [`SharedMemory`] — host-visible mirror.
-//! - [`SharedFftBuffer`] — device-local FFT-ready memory.
+//! - [`SharedMemory`]: host-visible mirror.
+//! - [`SharedFftBuffer`]: device-local FFT-ready memory.
 
 #![cfg(all(feature = "vulkan", feature = "cuda", target_os = "linux"))]
 

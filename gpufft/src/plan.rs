@@ -75,7 +75,7 @@ impl Direction {
 ///
 /// The same descriptor is used for C2C, R2C, and C2R; the transform kind is
 /// implied by which `plan_*` method is called on the device. `shape` is
-/// always the **real-space** shape — for R2C the complex output buffer is
+/// always the **real-space** shape. For R2C the complex output buffer is
 /// half-sized on the last dimension.
 #[derive(Clone, Copy, Debug)]
 pub struct PlanDesc {

@@ -2,10 +2,10 @@
 //!
 //! Three tiers of trait:
 //!
-//! - [`Scalar`] — any plain-old-data type that survives GPU transfer (`f32`,
+//! - [`Scalar`]: any plain-old-data type that survives GPU transfer (`f32`,
 //!   `f64`, [`num_complex::Complex32`], [`num_complex::Complex64`]).
-//! - [`Real`] — floating-point reals used for R2C / C2R transforms.
-//! - [`Complex`] — complex numbers used for C2C / R2C / C2R transforms.
+//! - [`Real`]: floating-point reals used for R2C / C2R transforms.
+//! - [`Complex`]: complex numbers used for C2C / R2C / C2R transforms.
 //!
 //! [`Real`] and [`Complex`] are paired through their associated types so
 //! the trait surface can pin down the partner scalar of an R2C plan:

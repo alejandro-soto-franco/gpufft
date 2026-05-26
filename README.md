@@ -19,7 +19,7 @@ works the same on NVIDIA, AMD, and Intel GPUs.
   bindgen on the system CUDA Toolkit (`gpufft-cuda-sys`).
 - Backends are selected by Cargo feature flags. Buffers and plans are typed
   at the **backend plus scalar** level, so mixing a Vulkan buffer with a CUDA
-  plan — or an `f32` plan with a `Complex64` buffer — is a compile error.
+  plan, or an `f32` plan with a `Complex64` buffer, is a compile error.
 - One plan-creation method per transform kind: `plan_c2c`, `plan_r2c`,
   `plan_c2r`. f32 (`Complex32` / `f32`) and f64 (`Complex64` / `f64`) at 1D,
   2D, and 3D.
@@ -154,10 +154,13 @@ cargo bench --features vulkan,cuda --bench r2c_c2r
 
 ## Non-goals (v0.1)
 
-- Cross-backend buffer sharing (external-memory interop is a later concern).
-- General GPU compute framework — use `wgpu` / `cubecl` for that.
+- General GPU compute framework. Use `wgpu` / `cubecl` for that.
 - Real-to-real transforms (DCT / DST), 4D+ shapes, non-power-of-two
   auto-tuning.
+
+Cross-backend buffer sharing graduated into the `shared` feature in v0.1.3
+(Linux only, requires both `vulkan` and `cuda`); see the Shared memory
+section above.
 
 ## Crate layout
 
