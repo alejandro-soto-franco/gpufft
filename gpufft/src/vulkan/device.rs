@@ -12,6 +12,30 @@ use crate::backend::Device;
 use crate::plan::PlanDesc;
 use crate::scalar::{Complex, Real, Scalar};
 
+/// Raw Vulkan handles for cross-backend interop. See [`crate::shared`].
+///
+/// Returned by [`VulkanDevice::raw_handles`]. The `command_pool` and `fence`
+/// here are the device's transfer pool/fence — reuse them for short-lived
+/// shared-memory operations; do not destroy them (the device owns them).
+#[cfg(all(feature = "cuda", target_os = "linux"))]
+#[derive(Clone)]
+pub struct RawVulkanHandles {
+    /// The Vulkan instance.
+    pub instance: ash::Instance,
+    /// The logical device.
+    pub device: ash::Device,
+    /// The selected physical device.
+    pub physical_device: ash::vk::PhysicalDevice,
+    /// The compute queue.
+    pub queue: ash::vk::Queue,
+    /// Index of the compute queue family.
+    pub queue_family_index: u32,
+    /// The device's transfer command pool (do not destroy).
+    pub command_pool: ash::vk::CommandPool,
+    /// The device's transfer fence (do not destroy).
+    pub fence: ash::vk::Fence,
+}
+
 /// Options controlling [`VulkanDevice`] construction.
 #[derive(Clone, Debug, Default)]
 pub struct DeviceOptions {
@@ -248,6 +272,22 @@ impl VulkanDevice {
         });
 
         Ok(Self { ctx })
+    }
+
+    /// Raw Vulkan handles for cross-backend interop (e.g. importing this
+    /// device's memory into CUDA). See [`crate::shared`].
+    #[cfg(all(feature = "cuda", target_os = "linux"))]
+    pub fn raw_handles(&self) -> RawVulkanHandles {
+        let ctx = &self.ctx;
+        RawVulkanHandles {
+            instance: ctx.instance.clone(),
+            device: ctx.device.clone(),
+            physical_device: ctx.physical_device,
+            queue: ctx.queue,
+            queue_family_index: ctx.queue_family_index,
+            command_pool: ctx.transfer_pool,
+            fence: ctx.transfer_fence,
+        }
     }
 
     /// Return the name of the selected physical device.
