@@ -296,6 +296,20 @@ fn end_cmd(ctx: &VulkanContext, cmd: vk::CommandBuffer) -> Result<(), VulkanErro
 // ============================================================
 
 /// VkFFT-backed complex-to-complex in-place FFT plan.
+///
+/// # Plan reuse contract
+///
+/// A single `VulkanC2cPlan` may be reused across an arbitrary number of
+/// distinct [`crate::vulkan::buffer::VulkanBuffer`] (or
+/// [`crate::shared::SharedFftBuffer`]) instances. Each call to
+/// [`Self::execute`] (or [`Self::execute_shared`]) inspects the caller's
+/// `VkBuffer` raw handle and, on change, transparently forces VkFFT to
+/// rebuild its descriptor set so the new buffer is read and written
+/// rather than the previous one. Same-buffer repeats pay only a single
+/// `u64` equality check and zero VkFFT-side rebuild work. See the
+/// module-level "Plan reuse across distinct buffers" section for the
+/// underlying mechanism (a two-slot heap-stable ping-pong inside the
+/// boxed `Inner`).
 pub struct VulkanC2cPlan<T: Complex> {
     inner: Box<C2cInner>,
     _marker: PhantomData<T>,
