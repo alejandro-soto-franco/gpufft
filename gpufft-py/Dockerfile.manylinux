@@ -1,24 +1,37 @@
-# manylinux_2_28_x86_64 + CUDA Toolkit 13.x (cuFFT) + Vulkan/glslang/SPIRV-Tools
-# (VkFFT shim) + Rust stable + maturin. Builds the public PyPI wheel.
+# manylinux_2_28_x86_64 + CUDA Toolkit 13.x (cuFFT) + a from-source Vulkan SDK
+# (Vulkan-Headers/Loader, SPIRV-Headers/Tools, glslang) for the VkFFT shim +
+# Rust stable + maturin. Builds the public PyPI wheel.
 #
 # Build:  docker build -f gpufft-py/Dockerfile.manylinux \
 #                      -t gpufft-builder:latest gpufft-py
 # Run:    docker run --rm -v $(pwd):/work:z -w /work \
 #                      gpufft-builder:latest /work/gpufft-py/build-wheel.sh
 #
-# Notes:
-# - No GPU is needed at build time. cuFFT links against the CUDA Toolkit; the
-#   VkFFT shim links the Vulkan loader + SPIRV-Tools for offline shader codegen.
-#   None of libcuda / libcufft / libvulkan is bundled into the wheel; the user's
-#   driver + CUDA install provide them at runtime (see build-wheel.sh excludes).
-# - manylinux_2_28 is AlmaLinux 8; Vulkan/glslang/SPIRV-Tools come from EPEL.
+# Why source-build the Vulkan SDK: AlmaLinux 8's only glslang (devel repo) is
+# the 2020-era 8.13, which predates the split-library layout
+# (MachineIndependent / GenericCodeGen / glslang-default-resource-limits) that
+# gpufft-vulkan-sys/build.rs links, and EL8's Vulkan headers are < 1.3 (the
+# build script requires >= 1.3 via pkg-config). Pinning all five Khronos repos
+# to one `vulkan-sdk` tag keeps them mutually compatible.
+#
+# No GPU is needed at build time; none of libcuda/libcufft/libvulkan is bundled
+# into the wheel (the user's driver + CUDA + Vulkan ICD provide them at run
+# time; see build-wheel.sh excludes).
 
 FROM quay.io/pypa/manylinux_2_28_x86_64:latest
 
 ENV RUSTUP_HOME=/root/.rustup CARGO_HOME=/root/.cargo
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# CUDA Toolkit 13.x (provides cuFFT + cudart for the link).
+# dnf speed: 10-way parallel downloads + pin AlmaLinux to its official CDN
+# (repo.almalinux.org, Cloudflare-fronted). The geo mirrorlist picked slow
+# regional mirrors (~60 kB/s from here); CDN + parallelism is far faster.
+RUN printf '\nmax_parallel_downloads=10\nfastestmirror=False\nretries=10\n' >> /etc/dnf/dnf.conf && \
+    sed -i -e 's|^mirrorlist=|#mirrorlist=|' \
+           -e 's|^#[[:space:]]*baseurl=https://repo.almalinux.org|baseurl=https://repo.almalinux.org|' \
+      /etc/yum.repos.d/almalinux*.repo
+
+# CUDA Toolkit 13.x (cuFFT + cudart).
 RUN dnf -y install dnf-plugins-core && \
     dnf config-manager --add-repo \
       https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo && \
@@ -29,14 +42,63 @@ ENV PATH="/usr/local/cuda/bin:${PATH}" \
     LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}" \
     CUDA_HOME=/usr/local/cuda
 
-# Vulkan loader + headers, glslang (static), SPIRV-Tools (shared) for the
-# vendored VkFFT C shim compiled by gpufft-vulkan-sys/build.rs.
-RUN dnf -y install epel-release && \
-    dnf -y install \
-      vulkan-loader-devel vulkan-headers \
-      glslang-devel \
-      spirv-tools-devel spirv-tools-libs && \
+# Build tooling: C/C++ toolchain is already in the manylinux image; add git,
+# pkgconf, and clang/llvm (libclang is needed by the shim's bindgen step).
+RUN dnf -y install --enablerepo=powertools \
+      git pkgconf-pkg-config clang clang-devel llvm-devel && \
     dnf clean all
+ENV LIBCLANG_PATH=/usr/lib64
+
+# Recent CMake + Ninja from pip (EL8's cmake is too old for the SDK repos).
+RUN /opt/python/cp310-cp310/bin/pip install --no-cache-dir cmake ninja
+ENV PATH="/opt/python/cp310-cp310/bin:${PATH}"
+
+# One SDK tag across all Khronos repos guarantees mutual compatibility.
+ARG VULKAN_SDK_TAG=vulkan-sdk-1.3.296.0
+WORKDIR /sdk
+
+# Vulkan-Headers
+RUN git clone --depth 1 -b "$VULKAN_SDK_TAG" https://github.com/KhronosGroup/Vulkan-Headers.git && \
+    cmake -S Vulkan-Headers -B Vulkan-Headers/build -G Ninja \
+      -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 && \
+    cmake --install Vulkan-Headers/build
+
+# Vulkan-Loader (libvulkan.so.1 + vulkan.pc with the >= 1.3 version).
+# WSI (X11/XCB/Wayland window-system) support is disabled: gpufft is a headless
+# Vulkan compute client with no surface, and enabling WSI pulls X11/Wayland dev
+# headers we neither have nor need. Core + compute symbols are unaffected.
+RUN git clone --depth 1 -b "$VULKAN_SDK_TAG" https://github.com/KhronosGroup/Vulkan-Loader.git && \
+    cmake -S Vulkan-Loader -B Vulkan-Loader/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 \
+      -DVULKAN_HEADERS_INSTALL_DIR=/usr -DBUILD_TESTS=OFF \
+      -DBUILD_WSI_XCB_SUPPORT=OFF -DBUILD_WSI_XLIB_SUPPORT=OFF \
+      -DBUILD_WSI_WAYLAND_SUPPORT=OFF -DBUILD_WSI_DIRECTFB_SUPPORT=OFF && \
+    cmake --build Vulkan-Loader/build && cmake --install Vulkan-Loader/build
+
+# SPIRV-Headers
+RUN git clone --depth 1 -b "$VULKAN_SDK_TAG" https://github.com/KhronosGroup/SPIRV-Headers.git && \
+    cmake -S SPIRV-Headers -B SPIRV-Headers/build -G Ninja \
+      -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 && \
+    cmake --install SPIRV-Headers/build
+
+# SPIRV-Tools: static cores (libSPIRV-Tools.a, -opt.a, ...) + the C-API
+# libSPIRV-Tools-shared.so. The shim links the static core so its C++ symbols
+# (spvtools::utils::Timer, referenced by -opt) end up inside the bundle .so;
+# see the -lSPIRV-Tools addition in gpufft-vulkan-sys/build.rs.
+RUN git clone --depth 1 -b "$VULKAN_SDK_TAG" https://github.com/KhronosGroup/SPIRV-Tools.git && \
+    cmake -S SPIRV-Tools -B SPIRV-Tools/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 \
+      -DSPIRV-Headers_SOURCE_DIR=/sdk/SPIRV-Headers \
+      -DSPIRV_SKIP_TESTS=ON -DSPIRV_SKIP_EXECUTABLES=OFF -DSPIRV_WERROR=OFF && \
+    cmake --build SPIRV-Tools/build && cmake --install SPIRV-Tools/build
+
+# glslang (static split libs + C interface; uses the installed SPIRV-Tools).
+RUN git clone --depth 1 -b "$VULKAN_SDK_TAG" https://github.com/KhronosGroup/glslang.git && \
+    cmake -S glslang -B glslang/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib64 \
+      -DENABLE_OPT=ON -DALLOW_EXTERNAL_SPIRV_TOOLS=ON \
+      -DBUILD_SHARED_LIBS=OFF -DENABLE_GLSLANG_BINARIES=ON -DGLSLANG_TESTS=OFF && \
+    cmake --build glslang/build && cmake --install glslang/build
 
 # Rust stable (edition 2024 needs >= 1.85).
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \

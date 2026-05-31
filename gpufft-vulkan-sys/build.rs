@@ -93,7 +93,20 @@ fn main() {
             "-lglslang-default-resource-limits",
         ])
         .args(["-Wl,--no-whole-archive"])
-        .args(["-lSPIRV-Tools-shared", "-lSPIRV-Tools-opt", "-lvulkan"])
+        // Link the SPIRV-Tools optimizer AND its core library. `-opt` references
+        // core C++ symbols (e.g. spvtools::utils::Timer); the core lib defines
+        // them, so it must follow `-opt` in link order. `-shared` is the C API.
+        // Distros that ship SPIRV-Tools as fully-shared libs (Fedora) re-export
+        // the core symbols through `-shared`, masking the missing `-lSPIRV-Tools`;
+        // a stock static SPIRV-Tools (e.g. a from-source manylinux build) does
+        // not, so the dlopened shim fails with an undefined-symbol error without
+        // it.
+        .args([
+            "-lSPIRV-Tools-opt",
+            "-lSPIRV-Tools",
+            "-lSPIRV-Tools-shared",
+            "-lvulkan",
+        ])
         .arg("-L/usr/lib64")
         .status()
         .expect("failed to run c++ for shared lib");

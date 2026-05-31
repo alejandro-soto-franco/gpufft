@@ -27,6 +27,15 @@ echo "Building wheel (maturin, auditwheel skip)..."
 RAW=$(ls /tmp/wheel-raw/gpufft-*.whl | head -1)
 echo "Raw wheel: $RAW"
 
+# auditwheel locates NEEDED libraries via the loader search path. The VkFFT
+# shim (libgpufft_vkfft_bundle.so) lives in the cargo OUT_DIR, and the
+# from-source C++ libs need the gcc-toolset libstdc++; put both on the path so
+# auditwheel can find and graft them into the wheel.
+BUNDLE_DIR="$(dirname "$(find /tmp/gpufft-target -name 'libgpufft_vkfft_bundle.so' | head -1)")"
+GCC_TS_LIB="$(dirname "$(find /opt/rh -name 'libstdc++.so.6' 2>/dev/null | head -1)")"
+export LD_LIBRARY_PATH="$BUNDLE_DIR:$GCC_TS_LIB:/usr/local/cuda/lib64:/usr/lib64:${LD_LIBRARY_PATH:-}"
+echo "auditwheel search path: $LD_LIBRARY_PATH"
+
 echo "Repairing wheel (bundle VkFFT shim, exclude vendor libs)..."
 auditwheel repair "$RAW" \
     --plat manylinux_2_28_x86_64 \
@@ -36,6 +45,10 @@ auditwheel repair "$RAW" \
     --exclude libcuda.so.1 \
     --exclude 'libnvrtc.so*' \
     -w /work/dist
+
+# The container runs as root, so chown the output back to whoever owns /work
+# (the host user) — otherwise the host can't clean/move the wheel.
+chown -R "$(stat -c '%u:%g' /work)" /work/dist 2>/dev/null || true
 
 echo
 echo "Wheel(s) produced:"
