@@ -4,6 +4,7 @@ members = [
     "gpufft",
     "gpufft-vulkan-sys",
     "gpufft-cuda-sys",
+    "gpufft-py",
 ]
 
 [workspace.package]

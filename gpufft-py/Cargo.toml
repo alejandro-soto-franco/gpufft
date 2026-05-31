@@ -1,0 +1,19 @@
+[package]
+name = "gpufft-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Python bindings for gpufft: cuFFT + VkFFT under one cross-vendor FFT API."
+
+[lib]
+name = "gpufft"
+crate-type = ["cdylib"]
+
+[dependencies]
+gpufft = { path = "../gpufft", default-features = false, features = ["cuda", "vulkan"] }
+num-complex = { version = "0.4", default-features = false, features = ["std", "bytemuck"] }
+numpy = "0.23"
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"] }

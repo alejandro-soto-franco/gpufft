@@ -1,0 +1,41 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "gpufft"
+version = "0.1.3"
+description = "Cross-vendor GPU FFT for Python: cuFFT (NVIDIA) and VkFFT (AMD/Intel/Apple/NVIDIA) under one API."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Alejandro Soto Franco", email = "sotofranco.eng@gmail.com" }]
+keywords = ["gpu", "fft", "cuda", "cufft", "vulkan", "vkfft", "scientific-computing", "rust"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: GPU",
+  "Environment :: GPU :: NVIDIA CUDA :: 13",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = ["numpy>=1.24"]
+
+[project.urls]
+Repository = "https://github.com/alejandro-soto-franco/gpufft"
+Issues = "https://github.com/alejandro-soto-franco/gpufft/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "gpufft._native"
+python-source = "python"
