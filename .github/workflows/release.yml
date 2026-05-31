@@ -1,0 +1,83 @@
+# PyPI publish workflow for the `gpufft` Python package (gpufft-py crate).
+#
+# Configure this filename under your PyPI Trusted Publisher settings
+# (project name: gpufft, workflow filename: release.yml).
+#
+# Flow: build the manylinux_2_28 wheel locally with `make wheel-manylinux`
+# (it bundles the VkFFT shim and excludes the runtime-provided vendor libs),
+# upload it to a GitHub Release as an asset, then this workflow downloads the
+# wheel from the Release and publishes to PyPI using OIDC trusted publishing
+# (no PyPI token in repo secrets).
+#
+# Why not build the wheel in CI: the wheel links cuFFT (CUDA Toolkit) and
+# compiles the vendored VkFFT shim against Vulkan/glslang/SPIRV-Tools. That
+# toolchain image is large and slow to build on a free GHA runner. Local
+# Docker build + upload-and-publish keeps CI usage to ~30 seconds per release.
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Git tag whose Release assets to publish (e.g. v0.1.3)"
+        required: true
+        type: string
+      target_index:
+        description: "Index to publish to"
+        required: true
+        default: testpypi
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+  # Also fire when a Release is published. Comment out for strictly manual control.
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write   # required by PyPI trusted publishing (OIDC)
+
+jobs:
+  publish:
+    name: Publish to ${{ inputs.target_index || 'pypi' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.target_index || 'pypi' }}
+    steps:
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download wheel assets from the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ steps.tag.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "gpufft-*.whl" \
+            --dir dist
+          ls -la dist/
+
+      - name: Publish to TestPyPI
+        if: ${{ inputs.target_index == 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+          skip-existing: true
+
+      - name: Publish to PyPI
+        if: ${{ inputs.target_index == 'pypi' || (github.event_name == 'release' && github.event.action == 'published') }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true

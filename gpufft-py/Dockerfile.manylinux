@@ -1,0 +1,50 @@
+# manylinux_2_28_x86_64 + CUDA Toolkit 13.x (cuFFT) + Vulkan/glslang/SPIRV-Tools
+# (VkFFT shim) + Rust stable + maturin. Builds the public PyPI wheel.
+#
+# Build:  docker build -f gpufft-py/Dockerfile.manylinux \
+#                      -t gpufft-builder:latest gpufft-py
+# Run:    docker run --rm -v $(pwd):/work:z -w /work \
+#                      gpufft-builder:latest /work/gpufft-py/build-wheel.sh
+#
+# Notes:
+# - No GPU is needed at build time. cuFFT links against the CUDA Toolkit; the
+#   VkFFT shim links the Vulkan loader + SPIRV-Tools for offline shader codegen.
+#   None of libcuda / libcufft / libvulkan is bundled into the wheel; the user's
+#   driver + CUDA install provide them at runtime (see build-wheel.sh excludes).
+# - manylinux_2_28 is AlmaLinux 8; Vulkan/glslang/SPIRV-Tools come from EPEL.
+
+FROM quay.io/pypa/manylinux_2_28_x86_64:latest
+
+ENV RUSTUP_HOME=/root/.rustup CARGO_HOME=/root/.cargo
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# CUDA Toolkit 13.x (provides cuFFT + cudart for the link).
+RUN dnf -y install dnf-plugins-core && \
+    dnf config-manager --add-repo \
+      https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo && \
+    dnf -y install cuda-toolkit-13-1 && \
+    dnf clean all
+
+ENV PATH="/usr/local/cuda/bin:${PATH}" \
+    LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}" \
+    CUDA_HOME=/usr/local/cuda
+
+# Vulkan loader + headers, glslang (static), SPIRV-Tools (shared) for the
+# vendored VkFFT C shim compiled by gpufft-vulkan-sys/build.rs.
+RUN dnf -y install epel-release && \
+    dnf -y install \
+      vulkan-loader-devel vulkan-headers \
+      glslang-devel \
+      spirv-tools-devel spirv-tools-libs && \
+    dnf clean all
+
+# Rust stable (edition 2024 needs >= 1.85).
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+      sh -s -- -y --default-toolchain stable --profile minimal
+
+# maturin + patchelf for building + repairing the wheel.
+RUN /opt/python/cp310-cp310/bin/pip install --no-cache-dir maturin patchelf
+ENV MATURIN=/opt/python/cp310-cp310/bin/maturin
+
+WORKDIR /work
+CMD ["bash"]
