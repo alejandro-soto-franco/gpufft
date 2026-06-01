@@ -39,3 +39,8 @@ dev = ["pytest>=8"]
 features = ["pyo3/extension-module"]
 module-name = "gpufft._native"
 python-source = "python"
+
+[tool.pyrefly]
+# Enables full Pyrefly type checking; run with `uvc`. See ~/.claude/rules/pyrefly.md
+# The compiled extension module has no source for the checker; treat it as Any.
+replace-imports-with-any = ["gpufft._native"]
