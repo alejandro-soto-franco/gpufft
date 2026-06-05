@@ -107,11 +107,9 @@ impl SharedMemory {
         let mem_req = unsafe { ash_device.get_buffer_memory_requirements(vk_buffer) };
 
         // SAFETY: phys_dev and ash_instance are valid for the device lifetime.
-        let mem_props =
-            unsafe { ash_instance.get_physical_device_memory_properties(phys_dev) };
+        let mem_props = unsafe { ash_instance.get_physical_device_memory_properties(phys_dev) };
 
-        let wanted =
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+        let wanted = vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
         let mem_type_idx = (0..mem_props.memory_type_count)
             .find(|&i| {
                 let supported = (mem_req.memory_type_bits & (1 << i)) != 0;
@@ -172,10 +170,8 @@ impl SharedMemory {
             // all-zero representation is valid; we overwrite every meaningful
             // field immediately below. The `handle` union field is set via the
             // `fd` variant, which is what OPAQUE_FD requires.
-            let mut desc: sys::cudaExternalMemoryHandleDesc =
-                unsafe { std::mem::zeroed() };
-            desc.type_ =
-                sys::cudaExternalMemoryHandleType_cudaExternalMemoryHandleTypeOpaqueFd;
+            let mut desc: sys::cudaExternalMemoryHandleDesc = unsafe { std::mem::zeroed() };
+            desc.type_ = sys::cudaExternalMemoryHandleType_cudaExternalMemoryHandleTypeOpaqueFd;
             // `handle` is a C union; the `fd` variant is correct for
             // OPAQUE_FD and is the only field CUDA reads.
             desc.handle.fd = raw_fd;
@@ -185,9 +181,7 @@ impl SharedMemory {
             // SAFETY: ext_mem_handle is a valid out-pointer; desc is fully
             // initialised; raw_fd is a valid file descriptor; CUDA takes fd
             // ownership on success.
-            let rc = unsafe {
-                sys::cudaImportExternalMemory(&mut ext_mem_handle, &desc)
-            };
+            let rc = unsafe { sys::cudaImportExternalMemory(&mut ext_mem_handle, &desc) };
             if rc != sys::cudaError_cudaSuccess {
                 // CUDA didn't take ownership on failure; wrap the fd in an
                 // OwnedFd so it is closed when we return the error.
@@ -203,8 +197,7 @@ impl SharedMemory {
         let mut device_ptr: *mut c_void = std::ptr::null_mut();
         {
             // SAFETY: all-zero is valid for this POD struct.
-            let mut buf_desc: sys::cudaExternalMemoryBufferDesc =
-                unsafe { std::mem::zeroed() };
+            let mut buf_desc: sys::cudaExternalMemoryBufferDesc = unsafe { std::mem::zeroed() };
             buf_desc.offset = 0;
             buf_desc.size = mem_req.size;
             buf_desc.flags = 0;

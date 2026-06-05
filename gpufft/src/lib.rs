@@ -68,7 +68,10 @@ pub mod vulkan;
 pub mod cuda;
 
 #[cfg(all(feature = "vulkan", feature = "cuda", target_os = "linux"))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "vulkan", feature = "cuda", target_os = "linux"))))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "vulkan", feature = "cuda", target_os = "linux")))
+)]
 pub mod shared;
 
 pub use backend::{Backend, BufferOps, C2cPlanOps, C2rPlanOps, Device, R2cPlanOps};

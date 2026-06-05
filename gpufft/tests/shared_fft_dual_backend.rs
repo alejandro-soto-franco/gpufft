@@ -13,9 +13,7 @@
 #![cfg(all(feature = "shared", target_os = "linux"))]
 
 use gpufft::{
-    Device, Direction, PlanDesc, Shape,
-    cuda::CudaBackend,
-    shared::SharedFftBuffer,
+    Device, Direction, PlanDesc, Shape, cuda::CudaBackend, shared::SharedFftBuffer,
     vulkan::VulkanBackend,
 };
 use num_complex::Complex32;

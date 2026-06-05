@@ -301,8 +301,8 @@ fn end_cmd(ctx: &VulkanContext, cmd: vk::CommandBuffer) -> Result<(), VulkanErro
 ///
 /// A single `VulkanC2cPlan` may be reused across an arbitrary number of
 /// distinct [`crate::vulkan::buffer::VulkanBuffer`] (or
-/// [`crate::shared::SharedFftBuffer`]) instances. Each call to
-/// [`Self::execute`] (or [`Self::execute_shared`]) inspects the caller's
+/// `SharedFftBuffer`) instances. Each call to
+/// [`Self::execute`] (or `execute_shared`) inspects the caller's
 /// `VkBuffer` raw handle and, on change, transparently forces VkFFT to
 /// rebuild its descriptor set so the new buffer is read and written
 /// rather than the previous one. Same-buffer repeats pay only a single

@@ -19,9 +19,9 @@ mod kernels;
 mod plan;
 
 pub use buffer::VulkanBuffer;
-pub use device::{DeviceOptions, VulkanDevice};
 #[cfg(all(feature = "cuda", target_os = "linux"))]
 pub use device::RawVulkanHandles;
+pub use device::{DeviceOptions, VulkanDevice};
 pub use error::VulkanError;
 pub use plan::{VulkanC2cPlan, VulkanC2rPlan, VulkanR2cPlan};
 

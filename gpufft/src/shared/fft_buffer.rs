@@ -106,8 +106,7 @@ impl SharedFftBuffer {
         let mem_req = unsafe { ash_device.get_buffer_memory_requirements(vk_buffer) };
 
         // SAFETY: phys_dev and ash_instance are valid for the device lifetime.
-        let mem_props =
-            unsafe { ash_instance.get_physical_device_memory_properties(phys_dev) };
+        let mem_props = unsafe { ash_instance.get_physical_device_memory_properties(phys_dev) };
 
         let mem_type_idx = (0..mem_props.memory_type_count)
             .find(|&i| {
@@ -157,9 +156,9 @@ impl SharedFftBuffer {
                 .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
             // SAFETY: vk_memory is valid and was allocated with OPAQUE_FD export.
             unsafe {
-                loader.get_memory_fd(&fd_info).map_err(|e| {
-                    SharedMemoryError::Vulkan(format!("vkGetMemoryFdKHR: {e:?}"))
-                })?
+                loader
+                    .get_memory_fd(&fd_info)
+                    .map_err(|e| SharedMemoryError::Vulkan(format!("vkGetMemoryFdKHR: {e:?}")))?
             }
         };
 
@@ -171,10 +170,8 @@ impl SharedFftBuffer {
             // all-zero representation is valid; we overwrite every meaningful
             // field immediately below. The `handle` union field is set via the
             // `fd` variant, which is what OPAQUE_FD requires.
-            let mut desc: sys::cudaExternalMemoryHandleDesc =
-                unsafe { std::mem::zeroed() };
-            desc.type_ =
-                sys::cudaExternalMemoryHandleType_cudaExternalMemoryHandleTypeOpaqueFd;
+            let mut desc: sys::cudaExternalMemoryHandleDesc = unsafe { std::mem::zeroed() };
+            desc.type_ = sys::cudaExternalMemoryHandleType_cudaExternalMemoryHandleTypeOpaqueFd;
             // `handle` is a C union; the `fd` variant is correct for
             // OPAQUE_FD and is the only field CUDA reads.
             desc.handle.fd = raw_fd;
@@ -205,8 +202,7 @@ impl SharedFftBuffer {
         let mut device_ptr: *mut c_void = std::ptr::null_mut();
         {
             // SAFETY: all-zero is valid for this POD struct.
-            let mut buf_desc: sys::cudaExternalMemoryBufferDesc =
-                unsafe { std::mem::zeroed() };
+            let mut buf_desc: sys::cudaExternalMemoryBufferDesc = unsafe { std::mem::zeroed() };
             buf_desc.offset = 0;
             buf_desc.size = mem_req.size;
             buf_desc.flags = 0;
@@ -214,11 +210,7 @@ impl SharedFftBuffer {
             // SAFETY: device_ptr is a valid out-pointer; ext_mem_handle was
             // just imported successfully; buf_desc is fully initialised.
             let rc = unsafe {
-                sys::cudaExternalMemoryGetMappedBuffer(
-                    &mut device_ptr,
-                    ext_mem_handle,
-                    &buf_desc,
-                )
+                sys::cudaExternalMemoryGetMappedBuffer(&mut device_ptr, ext_mem_handle, &buf_desc)
             };
             if rc != sys::cudaError_cudaSuccess {
                 // Best-effort cleanup before returning the error.

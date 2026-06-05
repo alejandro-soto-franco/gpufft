@@ -5,11 +5,11 @@
 
 #![cfg(all(feature = "vulkan", feature = "cuda", target_os = "linux"))]
 
-mod memory;
 mod fft_buffer;
+mod memory;
 
-pub use memory::SharedMemory;
 pub use fft_buffer::SharedFftBuffer;
+pub use memory::SharedMemory;
 
 use thiserror::Error;
 

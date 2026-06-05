@@ -94,7 +94,9 @@ impl CudaDevice {
 impl CudaDevice {
     /// Raw CUDA handles for cross-backend interop. See [`crate::shared`].
     pub fn raw_handles(&self) -> RawCudaHandles {
-        RawCudaHandles { device_ordinal: self.ctx.device_ordinal }
+        RawCudaHandles {
+            device_ordinal: self.ctx.device_ordinal,
+        }
     }
 
     /// Bind the calling thread to this device's ordinal via `cudaSetDevice`.
