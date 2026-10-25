@@ -11,6 +11,7 @@ use ash::vk;
 
 use super::device::VulkanContext;
 use super::error::VulkanError;
+use super::stride_layout::StrideCopy;
 
 // Reduce the read_spv error path below to our existing VkResult variant.
 impl VulkanError {
@@ -21,9 +22,6 @@ impl VulkanError {
 
 /// Compiled SPIR-V for `shaders/stride_copy.comp`, embedded at build time.
 const STRIDE_COPY_SPV: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stride_copy.spv"));
-
-/// Local workgroup size declared in `stride_copy.comp`.
-const STRIDE_COPY_LOCAL_SIZE_X: u32 = 64;
 
 /// Compute-shader kernel performing stride-aware buffer copies.
 ///
@@ -180,18 +178,15 @@ impl StrideCopyKernel {
         })
     }
 
-    /// Update the descriptor set to point at `src` and `dst`. Must be
+    /// Update the descriptor set to bind the `copy.src_words` words of `src`
+    /// and the `copy.dst_words` words of `dst`. Must be
     /// called outside any command-buffer recording and before the next
     /// [`Self::record_dispatch`]. The previous dispatch using this
     /// descriptor set must have already completed (guaranteed by the
     /// plan's fence wait between executes).
-    pub(crate) fn update_descriptor(
-        &self,
-        src: vk::Buffer,
-        src_bytes: u64,
-        dst: vk::Buffer,
-        dst_bytes: u64,
-    ) {
+    pub(crate) fn update_descriptor(&self, src: vk::Buffer, dst: vk::Buffer, copy: &StrideCopy) {
+        let src_bytes = copy.src_words as u64 * 4;
+        let dst_bytes = copy.dst_words as u64 * 4;
         // SAFETY: ctx.device + descriptor_set valid.
         unsafe {
             let src_info = [vk::DescriptorBufferInfo::default()
@@ -218,25 +213,16 @@ impl StrideCopyKernel {
         }
     }
 
-    /// Record a dispatch that copies `n_rows` rows of `row_uints`
-    /// uint-words each, using the given source/destination row strides.
-    /// Sizes are in uint (4-byte) units.
-    pub(crate) fn record_dispatch(
-        &self,
-        cmd: vk::CommandBuffer,
-        row_uints: u32,
-        src_stride_uints: u32,
-        dst_stride_uints: u32,
-        n_rows: u32,
-    ) {
+    /// Record the dispatch `copy`, which
+    /// [`stride_layout::plan`](super::stride_layout::plan) has checked
+    /// against the device limits.
+    pub(crate) fn record_dispatch(&self, cmd: vk::CommandBuffer, copy: &StrideCopy) {
         let pc = PushBlock {
-            row_uints,
-            src_stride_uints,
-            dst_stride_uints,
-            n_rows,
+            row_uints: copy.row_uints,
+            src_stride_uints: copy.src_stride_uints,
+            dst_stride_uints: copy.dst_stride_uints,
+            n_rows: copy.n_rows,
         };
-        let total = row_uints as u64 * n_rows as u64;
-        let groups_x = total.div_ceil(STRIDE_COPY_LOCAL_SIZE_X as u64) as u32;
 
         // SAFETY: cmd is in recording state; pipeline + descriptor set valid.
         unsafe {
@@ -258,7 +244,7 @@ impl StrideCopyKernel {
                 0,
                 bytemuck::bytes_of(&pc),
             );
-            self.ctx.device.cmd_dispatch(cmd, groups_x, 1, 1);
+            self.ctx.device.cmd_dispatch(cmd, copy.groups_x, 1, 1);
         }
     }
 }

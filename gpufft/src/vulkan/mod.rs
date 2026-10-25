@@ -17,6 +17,7 @@ mod device;
 mod error;
 mod kernels;
 mod plan;
+mod stride_layout;
 
 pub use buffer::VulkanBuffer;
 #[cfg(all(feature = "cuda", target_os = "linux"))]

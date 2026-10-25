@@ -169,3 +169,24 @@ fn vulkan_r2c_output_shape_matches_cufft_convention() {
     r2c.execute(&real_in, &mut spectrum)
         .expect("R2C execute should accept (nx, ny, nz/2+1) complex output");
 }
+
+#[test]
+fn vulkan_r2c_rejects_rows_past_the_binding_range() {
+    let Some(dev) = init_device() else { return };
+
+    // 2^31 + 2 padded reals need 8 GiB in one binding, past the 4 GiB that
+    // `maxStorageBufferRange` can express. The plan fails before allocating.
+    let desc = PlanDesc {
+        shape: Shape::D1(1 << 31),
+        batch: 1,
+        normalize: false,
+    };
+    assert!(matches!(
+        dev.plan_r2c::<f32>(&desc),
+        Err(VulkanError::InvalidPlan(_))
+    ));
+    assert!(matches!(
+        dev.plan_c2r::<f32>(&desc),
+        Err(VulkanError::InvalidPlan(_))
+    ));
+}

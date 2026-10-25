@@ -61,6 +61,10 @@ pub(crate) struct VulkanContext {
     pub(crate) queue: vk::Queue,
     pub(crate) queue_family_index: u32,
     pub(crate) memory_properties: vk::PhysicalDeviceMemoryProperties,
+    /// `maxStorageBufferRange`: the most bytes one storage binding may span.
+    pub(crate) max_storage_buffer_range: u32,
+    /// `maxComputeWorkGroupCount[0]`: the most workgroups along x per dispatch.
+    pub(crate) max_compute_groups_x: u32,
     pub(crate) transfer_pool: vk::CommandPool,
     pub(crate) transfer_fence: vk::Fence,
 }
@@ -262,6 +266,8 @@ impl VulkanDevice {
         // SAFETY: instance and physical_device are valid.
         let memory_properties =
             unsafe { instance.get_physical_device_memory_properties(physical_device) };
+        // SAFETY: instance and physical_device are valid.
+        let limits = unsafe { instance.get_physical_device_properties(physical_device) }.limits;
 
         // SAFETY: device just created; queue_family_index was validated above.
         let transfer_pool = unsafe {
@@ -288,6 +294,8 @@ impl VulkanDevice {
             queue,
             queue_family_index,
             memory_properties,
+            max_storage_buffer_range: limits.max_storage_buffer_range,
+            max_compute_groups_x: limits.max_compute_work_group_count[0],
             transfer_pool,
             transfer_fence,
         });
