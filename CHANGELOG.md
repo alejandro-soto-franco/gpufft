@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Vulkan R2C and C2R plans check the padding shader's dispatch against the
+  device's `maxStorageBufferRange` and `maxComputeWorkGroupCount[0]` and return
+  `VulkanError::InvalidPlan` when it exceeds either. Before, an R2C of more than
+  4,194,240 reals on llvmpipe dispatched more workgroups than the device allows,
+  and one of more than 128 MiB bound a range past its limit. Both are invalid
+  usage that the validation layer reports.
+- Buffers size host copies with `size_of::<T>()`. An external `Scalar`
+  implementation that overrode `BYTES` could make `write` and `read` copy past
+  the caller's slice.
+
+### Added
+- `verify/`: Lean proofs that every accepted padding dispatch reads and
+  writes inside its bindings in 32-bit arithmetic, covers every word and never
+  writes one word twice. Charon and Aeneas translate the Rust to Lean.
+
 ## [0.1.3] - 2026-05-26
 
 ### Added

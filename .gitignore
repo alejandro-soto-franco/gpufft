@@ -10,3 +10,4 @@ target
 
 # release wheels (built into ./dist by make wheel-manylinux)
 /dist/
+.lake
