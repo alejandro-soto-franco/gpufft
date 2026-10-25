@@ -355,7 +355,7 @@ impl<T: Complex> VulkanC2cPlan<T> {
         validate_desc_common(&desc)?;
 
         let element_count = (desc.shape.elements() * desc.batch as u64) as usize;
-        let buffer_bytes = (element_count * T::BYTES) as u64;
+        let buffer_bytes = (element_count * core::mem::size_of::<T>()) as u64;
 
         let (scratch_buffer, scratch_memory) = allocate_device_local_buffer(&ctx, buffer_bytes)?;
         let (command_pool, fence) = match create_pool_and_fence(&ctx) {

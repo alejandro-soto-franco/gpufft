@@ -25,7 +25,7 @@ pub struct VulkanBuffer<T: Scalar> {
 
 impl<T: Scalar> VulkanBuffer<T> {
     pub(crate) fn new(ctx: Arc<VulkanContext>, len: usize) -> Result<Self, VulkanError> {
-        let size_bytes = (len * T::BYTES) as u64;
+        let size_bytes = (len * core::mem::size_of::<T>()) as u64;
         let usage = vk::BufferUsageFlags::STORAGE_BUFFER
             | vk::BufferUsageFlags::TRANSFER_SRC
             | vk::BufferUsageFlags::TRANSFER_DST;

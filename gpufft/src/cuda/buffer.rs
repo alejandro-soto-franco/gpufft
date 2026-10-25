@@ -34,7 +34,7 @@ impl<T: Scalar> CudaBuffer<T> {
     pub(crate) fn new(ctx: Arc<CudaContext>, len: usize) -> Result<Self, CudaError> {
         ctx.make_current()?;
 
-        let size_bytes = (len * T::BYTES) as u64;
+        let size_bytes = (len * core::mem::size_of::<T>()) as u64;
         let mut d_ptr: *mut c_void = std::ptr::null_mut();
         // SAFETY: `cudaMalloc` writes a device pointer through the provided
         // out-parameter. `size_bytes` is a plain integer count.

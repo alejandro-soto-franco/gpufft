@@ -26,7 +26,11 @@ pub enum Precision {
 
 /// Any element type valid inside a [`Buffer`](crate::BufferOps).
 pub trait Scalar: Pod + Send + Sync + 'static {
-    /// Size of one element in bytes.
+    /// Size of one element in bytes, `size_of::<Self>()`.
+    ///
+    /// Buffers size their host copies with `size_of` directly. An
+    /// implementation that overrides this constant therefore cannot make a
+    /// copy read or write past the caller's slice.
     const BYTES: usize = core::mem::size_of::<Self>();
     /// Whether this type is a complex number (vs a bare real).
     const IS_COMPLEX: bool;
