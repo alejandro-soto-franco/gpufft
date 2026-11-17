@@ -6,19 +6,19 @@ Unified GPU-accelerated FFT for Rust, backed by **VkFFT** on Vulkan and **cuFFT*
 [![docs.rs](https://img.shields.io/docsrs/gpufft)](https://docs.rs/gpufft)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE-APACHE)
 
-## Why
+## Rationale
 
 The Rust ecosystem has good CPU FFT libraries (`rustfft`, `ndrustfft`) and solid
 GPU compute frameworks (`wgpu`, `cubecl`, `cudarc`), but no ergonomic
 cross-vendor GPU FFT. `gpufft` fills that gap with a single trait surface that
 works the same on NVIDIA, AMD, and Intel GPUs.
 
-- **Vulkan backend** wraps [VkFFT](https://github.com/DTolm/VkFFT) via a thin
+- Vulkan backend wraps [VkFFT](https://github.com/DTolm/VkFFT) via a thin
   FFI shim (`gpufft-vulkan-sys`), on pure `ash` with no `wgpu` dependency.
-- **CUDA backend** wraps [cuFFT](https://docs.nvidia.com/cuda/cufft/) via
+- CUDA backend wraps [cuFFT](https://docs.nvidia.com/cuda/cufft/) via
   bindgen on the system CUDA Toolkit (`gpufft-cuda-sys`).
 - Backends are selected by Cargo feature flags. Buffers and plans are typed
-  at the **backend plus scalar** level, so mixing a Vulkan buffer with a CUDA
+  at the **backend plus scalar** level. Mixing a Vulkan buffer with a CUDA
   plan, or an `f32` plan with a `Complex64` buffer, is a compile error.
 - One plan-creation method per transform kind: `plan_c2c`, `plan_r2c`,
   `plan_c2r`. f32 (`Complex32` / `f32`) and f64 (`Complex64` / `f64`) at 1D,
@@ -137,16 +137,16 @@ cargo bench --features vulkan,cuda --bench r2c_c2r
 
 ## Design notes
 
-- **C2C** is truly zero-copy: the user's buffer is passed through
+- C2C is zero-copy: the user's buffer is passed through
   `VkFFTLaunchParams.buffer` at dispatch time.
-- **R2C / C2R** use a compute-shader padder to align the real innermost
+- R2C / C2R use a compute-shader padder to align the real innermost
   axis to VkFFT's `2 * (n/2 + 1)` stride. A zero-copy path using
   `isInputFormatted = 1` with launch-time buffer overrides works for R2C
   but hits an upstream VkFFT bug for a dedicated multi-dim C2R plan; see
   [`investigations/vkfft_multidim_r2c/`](investigations/vkfft_multidim_r2c/)
   for the standalone C++ repro.
-- **Plan lifetimes**: `VkFFTConfiguration` retains raw pointers to its
-  handle fields for the application's lifetime, so all handle storage
+- Plan lifetimes: `VkFFTConfiguration` retains raw pointers to its
+  handle fields for the application's lifetime. All handle storage
   lives inside a boxed `Inner` struct with a stable heap address. A
   previous version of this code segfaulted inside `vkUpdateDescriptorSets`
   by pointing VkFFT at stack-local `u64` handle copies that went out of
